@@ -24,7 +24,7 @@ jobs:
       is_dependency_update: ${{ steps.check.outputs.is_dependency_update }}
       commit_message: ${{ steps.commit.outputs.message }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 2
 
@@ -58,7 +58,7 @@ jobs:
     needs: check-dependency-update
     if: needs.check-dependency-update.outputs.is_dependency_update == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
