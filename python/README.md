@@ -73,8 +73,17 @@ The `SecretManager` automatically discovers keys in this order:
 1. `DOTENVAGE_AGE_KEY` environment variable (full identity string)
 2. `AGE_KEY` environment variable
 3. `EKG_AGE_KEY` environment variable
-4. Key file from `AGE_KEY_NAME` → `~/.local/state/{namespace}/{keyname}.key`
-5. Default: `~/.local/state/dotenvage/dotenvage.key`
+4. OS keychain entry (service: `dotenvage` or
+   `DOTENVAGE_KEYCHAIN_SERVICE`; account: `AGE_KEY_NAME` or
+   `{CARGO_PKG_NAME}/dotenvage`)
+5. Key file from `AGE_KEY_NAME` → `~/.local/state/{namespace}/{keyname}.key`
+6. Default: `~/.local/state/dotenvage/dotenvage.key`
+
+OS keychain lookup currently uses:
+- macOS: Keychain via `security`
+- Linux/Unix: Secret Service via `secret-tool`
+- Windows: lookup falls back to file/env sources (no keychain lookup yet);
+  `keygen --store os|both` stores using `cmdkey`
 
 `AGE_KEY_NAME` format is `{namespace}/{keyname}`, e.g., `myapp/production`
 → `~/.local/state/myapp/production.key`

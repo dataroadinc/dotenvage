@@ -152,7 +152,15 @@ Creates a SecretManager by loading the key from standard locations:
 1. `DOTENVAGE_AGE_KEY` environment variable
 2. `AGE_KEY` environment variable
 3. `EKG_AGE_KEY` environment variable
-4. Key file at `~/.local/state/dotenvage/dotenvage.key`
+4. OS keychain entry (service: `dotenvage` or `DOTENVAGE_KEYCHAIN_SERVICE`;
+   account: `AGE_KEY_NAME` or `{CARGO_PKG_NAME}/dotenvage`)
+5. Key file at `~/.local/state/dotenvage/dotenvage.key`
+
+OS keychain lookup currently uses:
+- macOS: Keychain via `security`
+- Linux/Unix: Secret Service via `secret-tool`
+- Windows: lookup falls back to file/env sources (no keychain lookup yet);
+  `keygen --store os|both` stores using `cmdkey`
 
 ```typescript
 const manager = dotenvage.JsSecretManagerNew();

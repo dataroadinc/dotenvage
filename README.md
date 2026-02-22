@@ -98,6 +98,12 @@ dotenvage = "0.3"
 # Generate a key
 dotenvage keygen
 
+# Generate a key and store in OS keychain only
+dotenvage keygen --store os
+
+# Generate a key and store in both file and OS keychain
+dotenvage keygen --store both
+
 # Encrypt sensitive values in .env.local
 dotenvage encrypt .env.local
 
@@ -465,9 +471,20 @@ Keys are discovered in this priority order:
 1. **`DOTENVAGE_AGE_KEY`** env var (full identity string)
 2. **`AGE_KEY`** env var (full identity string)
 3. **`EKG_AGE_KEY`** env var (for EKG project compatibility)
-4. **`AGE_KEY_NAME`** from .env → key file at
+4. **OS keychain** entry (service: `dotenvage` or
+   `DOTENVAGE_KEYCHAIN_SERVICE`; account: `AGE_KEY_NAME` or
+   `{CARGO_PKG_NAME}/dotenvage`)
+5. **`AGE_KEY_NAME`** from .env → key file at
    `$XDG_STATE_HOME/{AGE_KEY_NAME}.key`
-5. **Default**: `~/.local/state/{CARGO_PKG_NAME}/dotenvage.key`
+6. **Default**: `~/.local/state/{CARGO_PKG_NAME}/dotenvage.key`
+
+OS keychain lookup currently uses:
+- macOS: Keychain via `security`
+- Linux/Unix: Secret Service via `secret-tool`
+- Windows: lookup falls back to file/env sources (no keychain lookup yet);
+  `keygen --store os|both` stores using `cmdkey`
+
+Use `dotenvage keygen --store file|os|both` to control where new keys are stored.
 
 ### Project-Specific Keys
 

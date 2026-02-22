@@ -20,6 +20,7 @@ use anyhow::{
 use clap::{
     Parser,
     Subcommand,
+    ValueEnum,
 };
 use dotenvage::{
     AutoDetectPatterns,
@@ -36,6 +37,13 @@ struct DumpOptions {
     docker: bool,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum KeyStore {
+    File,
+    Os,
+    Both,
+}
+
 #[derive(Subcommand, Debug, Clone)]
 enum Commands {
     /// Generate a new encryption key pair
@@ -47,6 +55,9 @@ enum Commands {
         /// Force overwrite if key already exists
         #[arg(short, long)]
         force: bool,
+        /// Where to store the private key
+        #[arg(long, value_enum, default_value_t = KeyStore::File)]
+        store: KeyStore,
     },
     /// Encrypt sensitive values in an environment file
     Encrypt {
@@ -157,7 +168,11 @@ fn write_env_file(path: &Path, vars: &HashMap<String, String>) -> Result<()> {
 fn main() -> Result<()> {
     let cli = <Cli as clap::Parser>::parse();
     match cli.command {
-        Commands::Keygen { output, force } => keygen(output, force),
+        Commands::Keygen {
+            output,
+            force,
+            store,
+        } => keygen(output, force, store),
         Commands::Encrypt { file, keys, auto } => encrypt(file, keys, auto),
         Commands::Edit { file } => edit(file),
         Commands::Set { pair, file } => set(pair, file),
@@ -188,23 +203,43 @@ fn main() -> Result<()> {
     }
 }
 
-fn keygen(output: Option<PathBuf>, force: bool) -> Result<()> {
+fn keygen(output: Option<PathBuf>, force: bool, store: KeyStore) -> Result<()> {
     // Discover AGE_KEY_NAME from .env files first to determine key location
     // This allows keygen to respect project-specific key paths
     SecretManager::discover_age_key_name_from_env_files()
         .context("Failed to discover AGE_KEY_NAME from .env files")?;
 
     let manager = SecretManager::generate().context("Failed to generate key")?;
-    // Use key_path_from_env_or_default() to respect AGE_KEY_NAME if discovered
-    let out = output.unwrap_or_else(SecretManager::key_path_from_env_or_default);
-    if out.exists() && !force {
-        anyhow::bail!(
-            "Key file already exists at {}. Use --force to overwrite.",
-            out.display()
+
+    if matches!(store, KeyStore::Os) && output.is_some() {
+        anyhow::bail!("--output is only valid when --store is 'file' or 'both'");
+    }
+
+    if matches!(store, KeyStore::File | KeyStore::Both) {
+        // Use key_path_from_env_or_default() to respect AGE_KEY_NAME if discovered
+        let out = output
+            .clone()
+            .unwrap_or_else(SecretManager::key_path_from_env_or_default);
+        if out.exists() && !force {
+            anyhow::bail!(
+                "Key file already exists at {}. Use --force to overwrite.",
+                out.display()
+            );
+        }
+        manager.save_key(&out).context("Failed to save key file")?;
+        println!("✓ Private key saved to: {}", out.display());
+    }
+
+    if matches!(store, KeyStore::Os | KeyStore::Both) {
+        let (service, account) = manager
+            .save_key_to_os_keychain()
+            .context("Failed to save key to OS keychain")?;
+        println!(
+            "✓ Private key saved to OS keychain (service: {}, account: {})",
+            service, account
         );
     }
-    manager.save_key(&out).context("Failed to save key")?;
-    println!("✓ Private key saved to: {}", out.display());
+
     println!("Public recipient: {}", manager.public_key_string());
     Ok(())
 }
