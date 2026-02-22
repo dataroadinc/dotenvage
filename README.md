@@ -177,6 +177,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load env files with auto-decryption
     EnvLoader::new()?.load()?;
 
+    // Write/update a variable via the library API (auto-encrypts sensitive keys)
+    let loader = EnvLoader::new()?;
+    loader.set_var_in_file("WWKG_PASSPHRASE", "super-secret", ".env.local")?;
+
     // Get all variable names (functional style)
     let vars = EnvLoader::new()?.get_all_variable_names()?.join(", ");
 

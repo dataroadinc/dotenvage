@@ -363,26 +363,19 @@ fn edit(file: PathBuf) -> Result<()> {
 fn set(pair: String, file: PathBuf) -> Result<()> {
     let manager = SecretManager::new().context("Failed to load encryption key")?;
     let (key, value) = pair.split_once('=').context("Invalid KEY=VALUE format")?;
-    let mut vars = if file.exists() {
-        let content = std::fs::read_to_string(&file)
-            .with_context(|| format!("Failed to read {}", file.display()))?;
-        parse_env_file(&content)?
-    } else {
-        HashMap::new()
-    };
-    // Never encrypt AGE key variables - they must remain plaintext for
-    // configuration
-    let final_value = if !AutoDetectPatterns::is_age_key_variable(key)
-        && AutoDetectPatterns::should_encrypt(key)
-    {
-        manager
-            .encrypt_value(value)
-            .context("Failed to encrypt value")?
-    } else {
-        value.to_string()
-    };
-    vars.insert(key.to_string(), final_value.clone());
-    write_env_file(&file, &vars)?;
+    let loader = dotenvage::EnvLoader::with_manager(manager);
+    loader
+        .set_var_in_file(key, value, &file)
+        .with_context(|| format!("Failed to write {}", file.display()))?;
+
+    let final_value = std::fs::read_to_string(&file)
+        .with_context(|| format!("Failed to read {}", file.display()))
+        .and_then(|content| {
+            parse_env_file(&content)?
+                .get(key)
+                .cloned()
+                .context("Key not found after write")
+        })?;
     let status = if SecretManager::is_encrypted(&final_value) {
         "encrypted"
     } else {

@@ -8,6 +8,7 @@ use std::collections::{
     HashMap,
     HashSet,
 };
+use std::io::Write;
 use std::path::{
     Path,
     PathBuf,
@@ -735,6 +736,143 @@ impl EnvLoader {
     /// ```
     pub fn get_var_or(&self, key: &str, default: &str) -> String {
         self.get_var(key).unwrap_or_else(|_| default.to_string())
+    }
+
+    /// Sets a variable in `.env.local` in the current directory.
+    ///
+    /// Values are automatically encrypted when
+    /// [`AutoDetectPatterns::should_encrypt`] returns `true`, except AGE key
+    /// configuration variables (e.g., `AGE_KEY_NAME`) which are always stored
+    /// as plaintext.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The target file cannot be read or parsed
+    /// - Encryption fails
+    /// - The updated file cannot be written
+    pub fn set_var(&self, key: &str, value: &str) -> SecretsResult<PathBuf> {
+        self.set_var_in_dir(key, value, ".")
+    }
+
+    /// Sets a variable in `.env.local` in a specific directory.
+    ///
+    /// Returns the path that was written (`{dir}/.env.local`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The target file cannot be read or parsed
+    /// - Encryption fails
+    /// - The updated file cannot be written
+    pub fn set_var_in_dir(
+        &self,
+        key: &str,
+        value: &str,
+        dir: impl AsRef<Path>,
+    ) -> SecretsResult<PathBuf> {
+        let path = dir.as_ref().join(".env.local");
+        self.set_var_in_file(key, value, &path)?;
+        Ok(path)
+    }
+
+    /// Sets a variable in a specific `.env` file path.
+    ///
+    /// Existing key-value pairs are preserved (with the target key updated),
+    /// and output is written in deterministic sorted order.
+    ///
+    /// Values are automatically encrypted when
+    /// [`AutoDetectPatterns::should_encrypt`] returns `true`, except AGE key
+    /// configuration variables (e.g., `AGE_KEY_NAME`) which are always stored
+    /// as plaintext.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The target file cannot be read or parsed
+    /// - Encryption fails
+    /// - The updated file cannot be written
+    pub fn set_var_in_file(
+        &self,
+        key: &str,
+        value: &str,
+        path: impl AsRef<Path>,
+    ) -> SecretsResult<()> {
+        let path = path.as_ref();
+        let mut vars = Self::read_env_file_for_write(path)?;
+
+        // AGE key variables must stay plaintext for key discovery.
+        let final_value =
+            if !Self::is_age_key_variable(key) && AutoDetectPatterns::should_encrypt(key) {
+                self.manager.encrypt_value(value)?
+            } else {
+                value.to_string()
+            };
+
+        vars.insert(key.to_string(), final_value);
+        Self::write_env_file_for_write(path, &vars)
+    }
+
+    /// Parses an env file into a key-value map for write/update operations.
+    fn read_env_file_for_write(path: &Path) -> SecretsResult<HashMap<String, String>> {
+        if !path.exists() {
+            return Ok(HashMap::new());
+        }
+
+        let content =
+            std::fs::read_to_string(path).map_err(|e| SecretsError::EnvFileReadFailed {
+                path: path.display().to_string(),
+                reason: e.to_string(),
+            })?;
+
+        dotenvy::from_read_iter(content.as_bytes())
+            .collect::<Result<HashMap<String, String>, _>>()
+            .map_err(|e| SecretsError::EnvFileParseFailed {
+                path: path.display().to_string(),
+                reason: e.to_string(),
+            })
+    }
+
+    /// Writes key-value pairs to an env file in sorted KEY=VALUE format.
+    fn write_env_file_for_write(path: &Path, vars: &HashMap<String, String>) -> SecretsResult<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| SecretsError::WriteFailed(e.to_string()))?;
+        }
+
+        let mut file =
+            std::fs::File::create(path).map_err(|e| SecretsError::WriteFailed(e.to_string()))?;
+        let mut keys: Vec<_> = vars.keys().cloned().collect();
+        keys.sort();
+
+        for key in keys {
+            let value = vars
+                .get(&key)
+                .ok_or_else(|| SecretsError::WriteFailed("missing key during write".to_string()))?;
+            if Self::needs_env_file_quoting(value) {
+                writeln!(file, "{}=\"{}\"", key, Self::escape_env_file_value(value))
+                    .map_err(|e| SecretsError::WriteFailed(e.to_string()))?;
+            } else {
+                writeln!(file, "{}={}", key, value)
+                    .map_err(|e| SecretsError::WriteFailed(e.to_string()))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a value needs quoting in `.env` output.
+    fn needs_env_file_quoting(value: &str) -> bool {
+        value.is_empty()
+            || value.contains(char::is_whitespace)
+            || value.contains('$')
+            || value.contains('\n')
+            || value.contains('"')
+    }
+
+    /// Escape a value for `.env` double-quoted output.
+    fn escape_env_file_value(value: &str) -> String {
+        value.replace('"', "\\\"")
     }
 
     /// Gets all variable names from all `.env*` files that would be loaded.
@@ -1490,6 +1628,7 @@ impl AutoDetectPatterns {
         "TOKEN",
         "SECRET",
         "PASSWORD",
+        "PASSPHRASE",
         "CREDENTIAL",
         "_KEY",
         "API_KEY",
