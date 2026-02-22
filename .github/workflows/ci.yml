@@ -92,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: Setup Python
@@ -244,7 +244,7 @@ jobs:
       # Skip aarch64-pc-windows-msvc: no ARM64 Windows runners, can't cross-compile Python
       - name: Install uv
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: Setup Python
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
         run: uv python install 3.12
@@ -374,7 +374,7 @@ jobs:
 
       # Setup Python/uv for PyPI publish
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: Setup Python
         run: uv python install 3.12
 
