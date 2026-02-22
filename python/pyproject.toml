@@ -43,7 +43,6 @@ dev = [
 [tool.maturin]
 manifest-path = "dotenvage-pyo3/Cargo.toml"
 module-name = "dotenvage"
-python-source = "."
 features = ["pyo3/extension-module"]
 include = ["dotenvage.pyi", "py.typed"]
 

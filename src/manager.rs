@@ -134,6 +134,7 @@ impl KeyBackend for OsKeychainBackend {
     }
 }
 
+#[cfg(unix)]
 fn normalize_key_data(data: &str) -> Option<String> {
     let trimmed = data.trim();
     if trimmed.is_empty() {
@@ -178,7 +179,7 @@ fn load_from_os_keychain(service: &str, account: &str) -> SecretsResult<Option<S
 
         let stdout = String::from_utf8(output.stdout)
             .map_err(|e| SecretsError::KeyLoadFailed(format!("invalid keychain output: {}", e)))?;
-        return Ok(normalize_key_data(&stdout));
+        Ok(normalize_key_data(&stdout))
     }
 
     #[cfg(windows)]
