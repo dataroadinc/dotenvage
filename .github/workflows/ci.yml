@@ -151,8 +151,10 @@ jobs:
             os: macos-15-xlarge
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
+            use_zig: true
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
+            use_zig: true
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -169,6 +171,16 @@ jobs:
           cache-all-crates: "true"
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Install Zig
+        if: matrix.platform.use_zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.14.0"
+
+      - name: Install cargo-zigbuild
+        if: matrix.platform.use_zig
+        run: pip install cargo-zigbuild
+
       - name: Free Disk Space (Ubuntu)
         if: ${{ matrix.platform.os == 'ubuntu-24.04' || matrix.platform.os == 'ubuntu-24.04-arm' }}
         uses: jlumbroso/free-disk-space@v1.3.1
@@ -179,7 +191,15 @@ jobs:
 
       # Build CLI binary
       - name: Build CLI binary
-        run: cargo build --release --bin dotenvage --target ${{ matrix.platform.target }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform.use_zig }}" = "true" ]; then
+            cargo zigbuild --release --bin dotenvage \
+              --target ${{ matrix.platform.target }}.2.28
+          else
+            cargo build --release --bin dotenvage \
+              --target ${{ matrix.platform.target }}
+          fi
 
       - name: Create CLI archive (Unix)
         if: runner.os != 'Windows'
@@ -226,11 +246,16 @@ jobs:
         working-directory: npm
         shell: bash
         run: |
+          CROSS_FLAG=""
+          if [ "${{ matrix.platform.use_zig }}" = "true" ]; then
+            CROSS_FLAG="--cross-compile"
+          fi
           pnpm exec napi build \
             --manifest-path ./dotenvage-napi/Cargo.toml \
             --output-dir . \
             --platform \
             --release \
+            $CROSS_FLAG \
             --target ${{ matrix.platform.target }}
       - name: Upload npm .node artifact
         uses: actions/upload-artifact@v6
@@ -239,6 +264,19 @@ jobs:
           path: npm/*.node
           retention-days: 7
           if-no-files-found: error
+
+      - name: Verify glibc version requirement
+        if: matrix.platform.use_zig
+        shell: bash
+        run: |
+          echo "--- CLI binary ---"
+          objdump -T target/${{ matrix.platform.target }}/release/dotenvage \
+            | grep -oP 'GLIBC_\K[0-9.]+' | sort -Vu | tail -1
+          echo "--- NAPI .node ---"
+          for f in npm/*.node; do
+            [ -f "$f" ] && objdump -T "$f" \
+              | grep -oP 'GLIBC_\K[0-9.]+' | sort -Vu | tail -1
+          done
 
       # Build Python wheels
       # Skip aarch64-pc-windows-msvc: no ARM64 Windows runners, can't cross-compile Python
@@ -253,9 +291,14 @@ jobs:
         working-directory: python
         shell: bash
         run: |
+          ZIG_FLAG=""
+          if [ "${{ matrix.platform.use_zig }}" = "true" ]; then
+            ZIG_FLAG="--zig"
+          fi
           uv run maturin build \
             --release \
             --target ${{ matrix.platform.target }} \
+            $ZIG_FLAG \
             --out dist/
       - name: Upload Python wheel artifact
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
