@@ -246,16 +246,16 @@ jobs:
         working-directory: npm
         shell: bash
         run: |
-          CROSS_FLAG=""
+          ZIG_FLAG=""
           if [ "${{ matrix.platform.use_zig }}" = "true" ]; then
-            CROSS_FLAG="--cross-compile"
+            ZIG_FLAG="--zig"
           fi
           pnpm exec napi build \
             --manifest-path ./dotenvage-napi/Cargo.toml \
             --output-dir . \
             --platform \
             --release \
-            $CROSS_FLAG \
+            $ZIG_FLAG \
             --target ${{ matrix.platform.target }}
       - name: Upload npm .node artifact
         uses: actions/upload-artifact@v6
