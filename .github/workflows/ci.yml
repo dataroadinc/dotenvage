@@ -246,16 +246,20 @@ jobs:
         working-directory: npm
         shell: bash
         run: |
-          ZIG_FLAG=""
           if [ "${{ matrix.platform.use_zig }}" = "true" ]; then
-            ZIG_FLAG="--zig"
+            TARGET="${{ matrix.platform.target }}"
+            ZIG_TARGET="${TARGET/unknown-/}"
+            WRAPPER="/tmp/zig-cc-wrapper"
+            printf '#!/bin/sh\nexec zig cc -target %s.2.28 "$@"\n' "$ZIG_TARGET" > "$WRAPPER"
+            chmod +x "$WRAPPER"
+            ENV_TARGET=$(echo "$TARGET" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+            export "CARGO_TARGET_${ENV_TARGET}_LINKER=$WRAPPER"
           fi
           pnpm exec napi build \
             --manifest-path ./dotenvage-napi/Cargo.toml \
             --output-dir . \
             --platform \
             --release \
-            $ZIG_FLAG \
             --target ${{ matrix.platform.target }}
       - name: Upload npm .node artifact
         uses: actions/upload-artifact@v6
