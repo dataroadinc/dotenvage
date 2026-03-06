@@ -1,4 +1,5 @@
 target/
+.cargo-home/
 
 # No changelog in git itself, we generate it from the git log when creating a release
 CHANGELOG.md
