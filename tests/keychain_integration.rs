@@ -24,6 +24,7 @@ use tempfile::TempDir;
 // ── Helper ───────────────────────────────────────────────────
 
 /// Generate a key into a temp file and return the manager.
+#[cfg(unix)]
 fn generate_to_file(dir: &TempDir) -> (SecretManager, std::path::PathBuf) {
     let path = dir.path().join("test.key");
     let result = SecretManager::generate_and_save(KeyGenOptions {
