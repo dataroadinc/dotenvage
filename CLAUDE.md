@@ -133,8 +133,12 @@ git commit \
 1. `DOTENVAGE_AGE_KEY` env var
 2. `AGE_KEY` env var
 3. `EKG_AGE_KEY` env var
-4. `AGE_KEY_NAME` from `.env` → `$XDG_STATE_HOME/{name}.key`
-5. Default: `~/.local/state/dotenvage/dotenvage.key`
+4. OS user keychain (via `keyring` crate)
+5. System-level store (macOS System Keychain,
+   `/etc/dotenvage/` on Linux,
+   `%ProgramData%\dotenvage\` on Windows)
+6. `AGE_KEY_NAME` from `.env` → `$XDG_STATE_HOME/{name}.key`
+7. Default: `~/.local/state/dotenvage/dotenvage.key`
 
 ## Version Management
 

@@ -95,7 +95,7 @@ dotenvage = "0.3"
 ## Usage
 
 ```bash
-# Generate a key
+# Generate a key (saved to file by default)
 dotenvage keygen
 
 # Generate a key and store in OS keychain only
@@ -103,6 +103,9 @@ dotenvage keygen --store os
 
 # Generate a key and store in both file and OS keychain
 dotenvage keygen --store both
+
+# Generate a key in system-level store (for daemons)
+sudo dotenvage keygen --store system
 
 # Encrypt sensitive values in .env.local
 dotenvage encrypt .env.local
@@ -188,6 +191,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manager = SecretManager::generate()?;
     let enc = manager.encrypt_value("secret")?;
     let dec = manager.decrypt_value(&enc)?;
+
+    // Generate key and save to OS keychain (programmatic API)
+    use dotenvage::{KeyGenOptions, KeyStoreTarget};
+    let result = SecretManager::generate_and_save(KeyGenOptions {
+        target: KeyStoreTarget::OsKeychain,
+        key_name: Some("myproject/myapp".into()),
+        file_path: None,
+        force: false,
+    })?;
+    println!("Public key: {}", result.public_key);
+
+    // Check if key exists in system store
+    if SecretManager::key_exists_in_system_store() {
+        let mgr = SecretManager::load_from_system_store()?;
+        // daemon can now decrypt secrets
+    }
+
     Ok(())
 }
 ```
@@ -475,20 +495,50 @@ Keys are discovered in this priority order:
 1. **`DOTENVAGE_AGE_KEY`** env var (full identity string)
 2. **`AGE_KEY`** env var (full identity string)
 3. **`EKG_AGE_KEY`** env var (for EKG project compatibility)
-4. **OS keychain** entry (service: `dotenvage` or
-   `DOTENVAGE_KEYCHAIN_SERVICE`; account: `AGE_KEY_NAME` or
-   `{CARGO_PKG_NAME}/dotenvage`)
-5. **`AGE_KEY_NAME`** from .env → key file at
+4. **OS user keychain** (via the
+   [keyring](https://crates.io/crates/keyring) crate):
+   - macOS: Login Keychain
+   - Linux: kernel keyutils (no D-Bus required)
+   - Windows: Credential Manager
+5. **System-level store** (for daemon processes):
+   - macOS: System Keychain
+     (`/Library/Keychains/System.keychain`)
+   - Linux: `/etc/dotenvage/<key-name>.key`
+   - Windows: `%ProgramData%\dotenvage\<key-name>.key`
+6. **`AGE_KEY_NAME`** from .env → key file at
    `$XDG_STATE_HOME/{AGE_KEY_NAME}.key`
-6. **Default**: `~/.local/state/{CARGO_PKG_NAME}/dotenvage.key`
+7. **Default**: `~/.local/state/{CARGO_PKG_NAME}/dotenvage.key`
 
-OS keychain lookup currently uses:
-- macOS: Keychain via `security`
-- Linux/Unix: Secret Service via `secret-tool`
-- Windows: lookup falls back to file/env sources (no keychain lookup yet);
-  `keygen --store os|both` stores using `cmdkey`
+Use `dotenvage keygen --store <target>` to control where new
+keys are stored:
 
-Use `dotenvage keygen --store file|os|both` to control where new keys are stored.
+```bash
+# User key file (default)
+dotenvage keygen --store file
+
+# OS user keychain
+dotenvage keygen --store os
+
+# Both user keychain and file
+dotenvage keygen --store both
+
+# System-level store (for daemons, requires sudo/admin)
+sudo dotenvage keygen --store system
+```
+
+### Daemon key management
+
+For system daemons (launchd daemons, systemd system services,
+Windows services) that start at boot without a user session,
+store the key in the system-level store:
+
+```bash
+# Store existing key in system-level store
+sudo dotenvage keygen --store system
+```
+
+The daemon then discovers the key automatically via step 5 in
+the discovery chain — no environment variable embedding needed.
 
 ### Project-Specific Keys
 

@@ -63,7 +63,7 @@ fn keygen_store_file_force_required_for_existing_output() {
         .arg(&output)
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Key file already exists"));
+        .stderr(predicate::str::contains("key already exists"));
 
     let mut force_cmd = Command::new(assert_cmd::cargo::cargo_bin!("dotenvage"));
     force_cmd

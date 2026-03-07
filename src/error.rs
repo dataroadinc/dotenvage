@@ -53,4 +53,12 @@ pub enum SecretsError {
     /// Failed to write output.
     #[error("write failed: {0}")]
     WriteFailed(String),
+
+    /// Key already exists and `force` was not set.
+    #[error("key already exists: {0}")]
+    KeyAlreadyExists(String),
+
+    /// Required elevated privileges (sudo/admin).
+    #[error("insufficient privileges: {0}")]
+    InsufficientPrivileges(String),
 }

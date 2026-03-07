@@ -42,6 +42,7 @@ enum KeyStore {
     File,
     Os,
     Both,
+    System,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -204,43 +205,57 @@ fn main() -> Result<()> {
 }
 
 fn keygen(output: Option<PathBuf>, force: bool, store: KeyStore) -> Result<()> {
-    // Discover AGE_KEY_NAME from .env files first to determine key location
-    // This allows keygen to respect project-specific key paths
-    SecretManager::discover_age_key_name_from_env_files()
-        .context("Failed to discover AGE_KEY_NAME from .env files")?;
+    use dotenvage::{
+        KeyGenOptions,
+        KeyLocation,
+        KeyStoreTarget,
+    };
 
-    let manager = SecretManager::generate().context("Failed to generate key")?;
-
-    if matches!(store, KeyStore::Os) && output.is_some() {
+    if matches!(store, KeyStore::Os | KeyStore::System) && output.is_some() {
         anyhow::bail!("--output is only valid when --store is 'file' or 'both'");
     }
 
-    if matches!(store, KeyStore::File | KeyStore::Both) {
-        // Use key_path_from_env_or_default() to respect AGE_KEY_NAME if discovered
-        let out = output
-            .clone()
-            .unwrap_or_else(SecretManager::key_path_from_env_or_default);
-        if out.exists() && !force {
-            anyhow::bail!(
-                "Key file already exists at {}. Use --force to overwrite.",
-                out.display()
-            );
+    let target = match store {
+        KeyStore::File => KeyStoreTarget::File,
+        KeyStore::Os => KeyStoreTarget::OsKeychain,
+        KeyStore::Both => KeyStoreTarget::OsKeychainAndFile,
+        KeyStore::System => KeyStoreTarget::SystemStore,
+    };
+
+    let result = SecretManager::generate_and_save(KeyGenOptions {
+        target,
+        key_name: None,
+        file_path: output,
+        force,
+    })
+    .context("Failed to generate and save key")?;
+
+    for loc in &result.locations {
+        match loc {
+            KeyLocation::UserFile(p) => {
+                println!("Private key saved to: {}", p.display());
+            }
+            KeyLocation::OsKeychain { service, account } => {
+                println!(
+                    "Private key saved to OS keychain \
+                     (service: {}, account: {})",
+                    service, account
+                );
+            }
+            KeyLocation::SystemKeychain { service, account } => {
+                println!(
+                    "Private key saved to System Keychain \
+                     (service: {}, account: {})",
+                    service, account
+                );
+            }
+            KeyLocation::SystemFile(p) => {
+                println!("Private key saved to system store: {}", p.display());
+            }
         }
-        manager.save_key(&out).context("Failed to save key file")?;
-        println!("✓ Private key saved to: {}", out.display());
     }
 
-    if matches!(store, KeyStore::Os | KeyStore::Both) {
-        let (service, account) = manager
-            .save_key_to_os_keychain()
-            .context("Failed to save key to OS keychain")?;
-        println!(
-            "✓ Private key saved to OS keychain (service: {}, account: {})",
-            service, account
-        );
-    }
-
-    println!("Public recipient: {}", manager.public_key_string());
+    println!("Public recipient: {}", result.public_key);
     Ok(())
 }
 

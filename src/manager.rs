@@ -1,7 +1,12 @@
 //! Secret manager implementation for encryption and decryption using age.
 //!
 //! This module provides the core [`SecretManager`] type for encrypting and
-//! decrypting sensitive values using the [age encryption tool](https://age-encryption.org/).
+//! decrypting sensitive values using the
+//! [age encryption tool](https://age-encryption.org/).
+//!
+//! It also provides types for managing key storage across user-level and
+//! system-level credential stores, enabling daemon processes to access
+//! encryption keys without embedded secrets.
 
 use std::io::{
     Read,
@@ -11,7 +16,6 @@ use std::path::{
     Path,
     PathBuf,
 };
-use std::process::Command;
 
 use age::secrecy::ExposeSecret;
 use age::x25519;
@@ -21,6 +25,87 @@ use crate::error::{
     SecretsError,
     SecretsResult,
 };
+
+/// Target credential store for key operations.
+///
+/// Controls where keys are saved and loaded from. Used with
+/// [`SecretManager::generate_and_save`] and related methods.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyStoreTarget {
+    /// User-level OS credential store:
+    /// - macOS: Login Keychain
+    /// - Linux: kernel keyutils
+    /// - Windows: Credential Manager
+    OsKeychain,
+    /// System-level store for daemon processes:
+    /// - macOS: System Keychain (`/Library/Keychains/System.keychain`)
+    /// - Linux: `/etc/dotenvage/<key-name>.key`
+    /// - Windows: `%ProgramData%\dotenvage\<key-name>.key`
+    ///
+    /// Requires elevated privileges (sudo/admin) to write.
+    SystemStore,
+    /// Key file on disk at the XDG-compliant path.
+    File,
+    /// Both user-level OS keychain and file.
+    OsKeychainAndFile,
+}
+
+/// Describes where a key was saved.
+#[derive(Debug, Clone)]
+pub enum KeyLocation {
+    /// Saved to the user-level OS keychain.
+    OsKeychain {
+        /// The service name used for the keychain entry.
+        service: String,
+        /// The account name used for the keychain entry.
+        account: String,
+    },
+    /// Saved to the macOS System Keychain.
+    SystemKeychain {
+        /// The service name used for the keychain entry.
+        service: String,
+        /// The account name used for the keychain entry.
+        account: String,
+    },
+    /// Saved to a system-level protected file (Linux/Windows).
+    SystemFile(PathBuf),
+    /// Saved to a user-level key file.
+    UserFile(PathBuf),
+}
+
+/// Options for key generation via [`SecretManager::generate_and_save`].
+#[derive(Debug, Clone)]
+pub struct KeyGenOptions {
+    /// Where to save the generated key.
+    pub target: KeyStoreTarget,
+    /// Explicit key name (overrides `AGE_KEY_NAME` and `.env`
+    /// file discovery). Example: `"ekg/wwkg"`.
+    pub key_name: Option<String>,
+    /// Explicit file path (overrides XDG path derivation).
+    /// Only used when target includes [`KeyStoreTarget::File`].
+    pub file_path: Option<PathBuf>,
+    /// Overwrite existing key if present.
+    pub force: bool,
+}
+
+/// Result of a key generation operation.
+pub struct KeyGenResult {
+    /// The manager holding the generated key.
+    pub manager: SecretManager,
+    /// Where the key was persisted.
+    pub locations: Vec<KeyLocation>,
+    /// Public key string (`age1...`).
+    pub public_key: String,
+}
+
+impl std::fmt::Debug for KeyGenResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KeyGenResult")
+            .field("locations", &self.locations)
+            .field("public_key", &self.public_key)
+            .finish_non_exhaustive()
+    }
+}
 
 /// Manages encryption and decryption of secrets using age/X25519.
 ///
@@ -134,7 +219,6 @@ impl KeyBackend for OsKeychainBackend {
     }
 }
 
-#[cfg(unix)]
 fn normalize_key_data(data: &str) -> Option<String> {
     let trimmed = data.trim();
     if trimmed.is_empty() {
@@ -143,164 +227,271 @@ fn normalize_key_data(data: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+#[cfg(feature = "os-keychain")]
 fn load_from_os_keychain(service: &str, account: &str) -> SecretsResult<Option<String>> {
-    #[cfg(target_os = "macos")]
-    {
-        let output = Command::new("security")
-            .args(["find-generic-password", "-s", service, "-a", account, "-w"])
-            .output();
-
-        let Ok(output) = output else {
-            return Ok(None);
-        };
-
-        if !output.status.success() {
-            return Ok(None);
-        }
-
-        let stdout = String::from_utf8(output.stdout)
-            .map_err(|e| SecretsError::KeyLoadFailed(format!("invalid keychain output: {}", e)))?;
-        Ok(normalize_key_data(&stdout))
-    }
-
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let output = Command::new("secret-tool")
-            .args(["lookup", "service", service, "account", account])
-            .output();
-
-        let Ok(output) = output else {
-            return Ok(None);
-        };
-
-        if !output.status.success() {
-            return Ok(None);
-        }
-
-        let stdout = String::from_utf8(output.stdout)
-            .map_err(|e| SecretsError::KeyLoadFailed(format!("invalid keychain output: {}", e)))?;
-        Ok(normalize_key_data(&stdout))
-    }
-
-    #[cfg(windows)]
-    {
-        let _ = (service, account);
-        Ok(None)
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = (service, account);
-        Ok(None)
+    let entry = match keyring::Entry::new(service, account) {
+        Ok(e) => e,
+        Err(_) => return Ok(None),
+    };
+    match entry.get_password() {
+        Ok(password) => Ok(normalize_key_data(&password)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(keyring::Error::PlatformFailure(_)) => Ok(None),
+        Err(e) => Err(SecretsError::KeyLoadFailed(format!(
+            "OS keychain read failed (service='{}', account='{}'): {}",
+            service, account, e
+        ))),
     }
 }
 
+#[cfg(not(feature = "os-keychain"))]
+fn load_from_os_keychain(_service: &str, _account: &str) -> SecretsResult<Option<String>> {
+    Ok(None)
+}
+
+#[cfg(feature = "os-keychain")]
 fn save_to_os_keychain(service: &str, account: &str, identity: &str) -> SecretsResult<()> {
+    let entry = keyring::Entry::new(service, account).map_err(|e| {
+        SecretsError::KeySaveFailed(format!("failed to create keychain entry: {}", e))
+    })?;
+    entry.set_password(identity).map_err(|e| {
+        SecretsError::KeySaveFailed(format!(
+            "failed to save to OS keychain (service='{}', account='{}'): {}",
+            service, account, e
+        ))
+    })
+}
+
+#[cfg(not(feature = "os-keychain"))]
+fn save_to_os_keychain(_service: &str, _account: &str, _identity: &str) -> SecretsResult<()> {
+    Err(SecretsError::KeySaveFailed(
+        "OS keychain support not compiled (enable 'os-keychain' feature)".to_string(),
+    ))
+}
+
+#[cfg(feature = "os-keychain")]
+fn delete_from_os_keychain(service: &str, account: &str) -> SecretsResult<()> {
+    let entry = keyring::Entry::new(service, account).map_err(|e| {
+        SecretsError::KeySaveFailed(format!("failed to create keychain entry: {}", e))
+    })?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(SecretsError::KeySaveFailed(format!(
+            "failed to delete from OS keychain (service='{}', account='{}'): {}",
+            service, account, e
+        ))),
+    }
+}
+
+// ── System store backend ─────────────────────────────────────
+
+struct SystemStoreBackend {
+    key_name: String,
+}
+
+impl SystemStoreBackend {
+    fn new(key_name: String) -> Self {
+        Self { key_name }
+    }
+
+    #[allow(dead_code)]
+    fn path(&self) -> PathBuf {
+        system_store_path_for(&self.key_name)
+    }
+}
+
+impl KeyBackend for SystemStoreBackend {
+    fn load_identity_string(&self) -> SecretsResult<Option<String>> {
+        load_from_system_store_impl(&self.key_name)
+    }
+
+    fn save_identity_string(&self, identity: &str) -> SecretsResult<()> {
+        save_to_system_store_impl(&self.key_name, identity)
+    }
+}
+
+/// Returns the system store path for a given key name.
+///
+/// - macOS: `/Library/Keychains/System.keychain` (no file path; uses the System
+///   Keychain API)
+/// - Linux: `/etc/dotenvage/<key-name>.key`
+/// - Windows: `%ProgramData%\dotenvage\<key-name>.key`
+fn system_store_path_for(_key_name: &str) -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        PathBuf::from("/etc/dotenvage").join(format!("{}.key", _key_name))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let base = std::env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+        PathBuf::from(base)
+            .join("dotenvage")
+            .join(format!("{}.key", _key_name))
+    }
+
     #[cfg(target_os = "macos")]
     {
-        let output = Command::new("security")
-            .args([
-                "add-generic-password",
-                "-U",
-                "-s",
-                service,
-                "-a",
-                account,
-                "-w",
-                identity,
-            ])
-            .output()
-            .map_err(|e| {
-                SecretsError::KeySaveFailed(format!("failed to run security CLI: {}", e))
-            })?;
+        // macOS uses System Keychain, not a file path.
+        // Return a sentinel path for display purposes.
+        PathBuf::from("/Library/Keychains/System.keychain")
+    }
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SecretsError::KeySaveFailed(format!(
-                "failed to save key to macOS Keychain (service='{}', account='{}'): {}",
-                service,
-                account,
-                stderr.trim()
-            )));
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        PathBuf::from("/etc/dotenvage").join(format!("{}.key", _key_name))
+    }
+}
+
+fn load_from_system_store_impl(key_name: &str) -> SecretsResult<Option<String>> {
+    #[cfg(target_os = "macos")]
+    {
+        load_from_macos_system_keychain(key_name)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let path = system_store_path_for(key_name);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let data = std::fs::read_to_string(&path)
+            .map_err(|e| SecretsError::KeyLoadFailed(format!("read {}: {}", path.display(), e)))?;
+        Ok(normalize_key_data(&data))
+    }
+}
+
+fn save_to_system_store_impl(key_name: &str, identity: &str) -> SecretsResult<()> {
+    #[cfg(target_os = "macos")]
+    {
+        save_to_macos_system_keychain(key_name, identity)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let path = system_store_path_for(key_name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    return SecretsError::InsufficientPrivileges(format!(
+                        "cannot create {}: {} (try with sudo/admin)",
+                        parent.display(),
+                        e
+                    ));
+                }
+                SecretsError::KeySaveFailed(format!("create dir {}: {}", parent.display(), e))
+            })?;
+        }
+        std::fs::write(&path, identity.as_bytes()).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                return SecretsError::InsufficientPrivileges(format!(
+                    "cannot write {}: {} (try with sudo/admin)",
+                    path.display(),
+                    e
+                ));
+            }
+            SecretsError::KeySaveFailed(format!("write {}: {}", path.display(), e))
+        })?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&path)
+                .map_err(|e| {
+                    SecretsError::KeySaveFailed(format!("metadata {}: {}", path.display(), e))
+                })?
+                .permissions();
+            perms.set_mode(0o600);
+            std::fs::set_permissions(&path, perms).map_err(|e| {
+                SecretsError::KeySaveFailed(format!("chmod {}: {}", path.display(), e))
+            })?;
         }
 
         Ok(())
     }
+}
 
-    #[cfg(all(unix, not(target_os = "macos")))]
+/// Resolve the home directory for a given username.
+fn resolve_user_home(username: &str) -> SecretsResult<PathBuf> {
+    #[cfg(unix)]
     {
-        let mut child = Command::new("secret-tool")
-            .args([
-                "store",
-                "--label",
-                "dotenvage age key",
-                "service",
-                service,
-                "account",
-                account,
-            ])
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                SecretsError::KeySaveFailed(format!("failed to run secret-tool CLI: {}", e))
-            })?;
+        use nix::unistd::User;
 
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(identity.as_bytes()).map_err(|e| {
-                SecretsError::KeySaveFailed(format!("failed to write secret stdin: {}", e))
-            })?;
-        }
-
-        let output = child.wait_with_output().map_err(|e| {
-            SecretsError::KeySaveFailed(format!("failed waiting for secret-tool: {}", e))
+        let user = User::from_name(username).map_err(|e| {
+            SecretsError::KeyLoadFailed(format!("failed to look up user '{}': {}", username, e))
         })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SecretsError::KeySaveFailed(format!(
-                "failed to save key to Secret Service (service='{}', account='{}'): {}",
-                service,
-                account,
-                stderr.trim()
-            )));
+        match user {
+            Some(u) => Ok(u.dir),
+            None => Err(SecretsError::KeyLoadFailed(format!(
+                "user '{}' not found",
+                username
+            ))),
         }
-
-        Ok(())
     }
 
     #[cfg(windows)]
     {
-        let target = format!("{}:{}", service, account);
-        let output = Command::new("cmdkey")
-            .arg(format!("/generic:{}", target))
-            .arg("/user:dotenvage")
-            .arg(format!("/pass:{}", identity))
-            .output()
-            .map_err(|e| SecretsError::KeySaveFailed(format!("failed to run cmdkey CLI: {}", e)))?;
-
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SecretsError::KeySaveFailed(format!(
-                "failed to save key to Windows Credential Manager (target='{}'): {} {}",
-                target,
-                stdout.trim(),
-                stderr.trim()
-            )));
-        }
-
-        Ok(())
+        // On Windows, user profiles are at C:\Users\<username>.
+        let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        Ok(PathBuf::from(drive).join("Users").join(username))
     }
 
     #[cfg(not(any(unix, windows)))]
     {
-        let _ = (service, account, identity);
-        Err(SecretsError::KeySaveFailed(
-            "OS keychain write is not supported on this platform".to_string(),
+        let _ = username;
+        Err(SecretsError::KeyLoadFailed(
+            "resolve_user_home not supported on this platform".to_string(),
         ))
     }
+}
+
+#[cfg(target_os = "macos")]
+fn load_from_macos_system_keychain(key_name: &str) -> SecretsResult<Option<String>> {
+    use security_framework::os::macos::keychain::SecKeychain;
+
+    let keychain = SecKeychain::open("/Library/Keychains/System.keychain")
+        .map_err(|e| SecretsError::KeyLoadFailed(format!("cannot open System Keychain: {}", e)))?;
+
+    let service = SecretManager::keychain_service_name();
+    match keychain.find_generic_password(&service, key_name) {
+        Ok((password, _item)) => {
+            let data = String::from_utf8(password.as_ref().to_vec()).map_err(|e| {
+                SecretsError::KeyLoadFailed(format!("invalid keychain data: {}", e))
+            })?;
+            Ok(normalize_key_data(&data))
+        }
+        // errSecItemNotFound = -25300
+        Err(e) if e.code() == -25300 => Ok(None),
+        Err(_) => Ok(None), // Keychain inaccessible (locked, permissions)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn save_to_macos_system_keychain(key_name: &str, identity: &str) -> SecretsResult<()> {
+    use security_framework::os::macos::keychain::SecKeychain;
+
+    let keychain = SecKeychain::open("/Library/Keychains/System.keychain")
+        .map_err(|e| SecretsError::KeySaveFailed(format!("cannot open System Keychain: {}", e)))?;
+
+    let service = SecretManager::keychain_service_name();
+    keychain
+        .set_generic_password(&service, key_name, identity.as_bytes())
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("Authorization") || msg.contains("permission") || e.code() == -25293 {
+                // errSecAuthFailed = -25293
+                return SecretsError::InsufficientPrivileges(format!(
+                    "cannot write to System Keychain (try with sudo): {}",
+                    msg
+                ));
+            }
+            SecretsError::KeySaveFailed(format!(
+                "failed to save to macOS System Keychain \
+                 (service='{}', account='{}'): {}",
+                service, key_name, msg
+            ))
+        })
 }
 
 impl SecretManager {
@@ -617,6 +808,235 @@ impl SecretManager {
         Ok((service, account))
     }
 
+    /// Saves this key to the system-level credential store.
+    ///
+    /// - **macOS**: System Keychain (`/Library/Keychains/System.keychain`)
+    /// - **Linux**: `/etc/dotenvage/<key-name>.key`
+    /// - **Windows**: `%ProgramData%\dotenvage\<key-name>.key`
+    ///
+    /// Requires elevated privileges (sudo/admin).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SecretsError::InsufficientPrivileges`] if the process
+    /// lacks write access to the system store.
+    pub fn save_key_to_system_store(&self) -> SecretsResult<KeyLocation> {
+        let key_name = Self::key_name_from_env_or_default();
+        self.save_key_to_system_store_as(&key_name)
+    }
+
+    /// Saves this key to the system-level store with an explicit
+    /// key name.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SecretsError::InsufficientPrivileges`] if the process
+    /// lacks write access to the system store.
+    pub fn save_key_to_system_store_as(&self, key_name: &str) -> SecretsResult<KeyLocation> {
+        let backend = SystemStoreBackend::new(key_name.to_string());
+        backend.save_identity_string(&self.identity_string())?;
+
+        #[cfg(target_os = "macos")]
+        {
+            let service = Self::keychain_service_name();
+            Ok(KeyLocation::SystemKeychain {
+                service,
+                account: key_name.to_string(),
+            })
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            Ok(KeyLocation::SystemFile(backend.path()))
+        }
+    }
+
+    /// Generates a new key and saves it to the specified store(s).
+    ///
+    /// This is the programmatic equivalent of
+    /// `dotenvage keygen --store <target>`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if key generation or saving fails, or if
+    /// a key already exists and `force` is not set.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use dotenvage::{
+    ///     KeyGenOptions,
+    ///     KeyStoreTarget,
+    ///     SecretManager,
+    /// };
+    ///
+    /// let result = SecretManager::generate_and_save(KeyGenOptions {
+    ///     target: KeyStoreTarget::OsKeychain,
+    ///     key_name: Some("ekg/wwkg".into()),
+    ///     file_path: None,
+    ///     force: false,
+    /// })?;
+    /// println!("Public key: {}", result.public_key);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn generate_and_save(options: KeyGenOptions) -> SecretsResult<KeyGenResult> {
+        // If key_name is provided, set it in the environment so all
+        // downstream path resolution uses it.
+        if let Some(ref name) = options.key_name {
+            unsafe {
+                std::env::set_var("AGE_KEY_NAME", name);
+            }
+        } else {
+            Self::discover_age_key_name_from_env_files()?;
+        }
+
+        let manager = Self::generate()?;
+        let mut locations = Vec::new();
+
+        match options.target {
+            KeyStoreTarget::File => {
+                let path = options
+                    .file_path
+                    .unwrap_or_else(Self::key_path_from_env_or_default);
+                if path.exists() && !options.force {
+                    return Err(SecretsError::KeyAlreadyExists(format!(
+                        "key file at {}",
+                        path.display()
+                    )));
+                }
+                manager.save_key(&path)?;
+                locations.push(KeyLocation::UserFile(path));
+            }
+            KeyStoreTarget::OsKeychain => {
+                let (service, account) = manager.save_key_to_os_keychain()?;
+                locations.push(KeyLocation::OsKeychain { service, account });
+            }
+            KeyStoreTarget::SystemStore => {
+                let key_name = Self::key_name_from_env_or_default();
+                let loc = manager.save_key_to_system_store_as(&key_name)?;
+                locations.push(loc);
+            }
+            KeyStoreTarget::OsKeychainAndFile => {
+                let (service, account) = manager.save_key_to_os_keychain()?;
+                locations.push(KeyLocation::OsKeychain { service, account });
+                let path = options
+                    .file_path
+                    .unwrap_or_else(Self::key_path_from_env_or_default);
+                if path.exists() && !options.force {
+                    return Err(SecretsError::KeyAlreadyExists(format!(
+                        "key file at {}",
+                        path.display()
+                    )));
+                }
+                manager.save_key(&path)?;
+                locations.push(KeyLocation::UserFile(path));
+            }
+        }
+
+        let public_key = manager.public_key_string();
+        Ok(KeyGenResult {
+            manager,
+            locations,
+            public_key,
+        })
+    }
+
+    /// Loads the key specifically from the system-level store.
+    ///
+    /// Unlike [`new`](Self::new) which tries the full discovery
+    /// chain, this only checks the system store.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no key is found in the system store.
+    pub fn load_from_system_store() -> SecretsResult<Self> {
+        Self::discover_age_key_name_from_env_files()?;
+        let key_name = Self::key_name_from_env_or_default();
+        let backend = SystemStoreBackend::new(key_name.clone());
+        match backend.load_identity_string()? {
+            Some(data) => Self::load_from_string(&data),
+            None => Err(SecretsError::KeyLoadFailed(format!(
+                "no key found in system store for '{}'",
+                key_name
+            ))),
+        }
+    }
+
+    /// Loads a key from another user's file store.
+    ///
+    /// Resolves the key file path for `~<username>/.local/state/...`
+    /// based on the current `AGE_KEY_NAME`. This is intended for use
+    /// during `sudo` operations where the invoking user's key needs
+    /// to be read by the elevated process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user's home directory cannot be
+    /// resolved or no key file is found.
+    pub fn load_from_user(username: &str) -> SecretsResult<Self> {
+        Self::discover_age_key_name_from_env_files()?;
+        let key_name = Self::key_name_from_env_or_default();
+
+        let home = resolve_user_home(username)?;
+        let key_path = home
+            .join(".local/state")
+            .join(&key_name)
+            .with_extension("key");
+
+        let backend = FileKeyBackend::new(key_path.clone());
+        match backend.load_identity_string()? {
+            Some(data) => Self::load_from_string(&data),
+            None => Err(SecretsError::KeyLoadFailed(format!(
+                "no key file for user '{}' at {}",
+                username,
+                key_path.display()
+            ))),
+        }
+    }
+
+    /// Checks whether a key exists in the OS user keychain.
+    pub fn key_exists_in_os_keychain() -> bool {
+        let _ = Self::discover_age_key_name_from_env_files();
+        let key_name = Self::key_name_from_env_or_default();
+        let service = Self::keychain_service_name();
+        let backend = OsKeychainBackend::new(service, key_name);
+        matches!(backend.load_identity_string(), Ok(Some(_)))
+    }
+
+    /// Checks whether a key exists in the system-level store.
+    pub fn key_exists_in_system_store() -> bool {
+        let _ = Self::discover_age_key_name_from_env_files();
+        let key_name = Self::key_name_from_env_or_default();
+        let backend = SystemStoreBackend::new(key_name);
+        matches!(backend.load_identity_string(), Ok(Some(_)))
+    }
+
+    /// Deletes the key from the OS user keychain.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the deletion fails. Does not error if
+    /// no key exists.
+    #[cfg(feature = "os-keychain")]
+    pub fn delete_from_os_keychain() -> SecretsResult<()> {
+        let _ = Self::discover_age_key_name_from_env_files();
+        let key_name = Self::key_name_from_env_or_default();
+        let service = Self::keychain_service_name();
+        delete_from_os_keychain(&service, &key_name)
+    }
+
+    /// Returns the system store path for the current platform
+    /// and key name.
+    ///
+    /// - **macOS**: `/Library/Keychains/System.keychain`
+    /// - **Linux**: `/etc/dotenvage/<key-name>.key`
+    /// - **Windows**: `%ProgramData%\dotenvage\<key-name>.key`
+    pub fn system_store_path() -> PathBuf {
+        let _ = Self::discover_age_key_name_from_env_files();
+        let key_name = Self::key_name_from_env_or_default();
+        system_store_path_for(&key_name)
+    }
+
     /// Loads the identity from standard locations.
     ///
     /// This is called internally by [`new`](Self::new).
@@ -628,22 +1048,23 @@ impl SecretManager {
     /// 1. `DOTENVAGE_AGE_KEY` env var (full identity string)
     /// 2. `AGE_KEY` env var (full identity string)
     /// 3. `EKG_AGE_KEY` env var (for EKG project compatibility)
-    /// 4. OS keychain entry using:
-    ///    - Service: `DOTENVAGE_KEYCHAIN_SERVICE` or `dotenvage`
-    ///    - Account: `AGE_KEY_NAME` or `{CARGO_PKG_NAME}/dotenvage`
-    /// 5. Key file at path determined by `AGE_KEY_NAME` from .env or
+    /// 4. OS user keychain (via `keyring` crate)
+    /// 5. System-level store (macOS System Keychain, or
+    ///    `/etc/dotenvage/<key>.key` on Linux,
+    ///    `%ProgramData%\dotenvage\<key>.key` on Windows)
+    /// 6. Key file at path determined by `AGE_KEY_NAME` from .env or
     ///    environment
-    /// 6. Default key file: `~/.local/state/{CARGO_PKG_NAME or
+    /// 7. Default key file: `~/.local/state/{CARGO_PKG_NAME or
     ///    "dotenvage"}/dotenvage.key`
     ///
     /// # Errors
     ///
-    /// Returns an error if no key can be found in any of the standard locations
-    /// or if the key file/string is invalid.
+    /// Returns an error if no key can be found in any of the standard
+    /// locations or if the key file/string is invalid.
     pub fn load_key() -> SecretsResult<Self> {
-        // FIRST: Try to discover AGE_KEY_NAME from .env files before doing anything
-        // else This allows project-specific key discovery from .env
-        // configuration
+        // FIRST: Try to discover AGE_KEY_NAME from .env files before
+        // doing anything else. This allows project-specific key
+        // discovery from .env configuration.
         Self::discover_age_key_name_from_env_files()?;
 
         if let Ok(data) = std::env::var("DOTENVAGE_AGE_KEY") {
@@ -656,20 +1077,29 @@ impl SecretManager {
             return Self::load_from_string(&data);
         }
 
+        // Step 4: OS user keychain
         let key_name = Self::key_name_from_env_or_default();
         let keychain_service = Self::keychain_service_name();
-        let os_keychain_backend = OsKeychainBackend::new(keychain_service, key_name);
+        let os_keychain_backend = OsKeychainBackend::new(keychain_service, key_name.clone());
         if let Some(data) = os_keychain_backend.load_identity_string()? {
             return Self::load_from_string(&data);
         }
 
+        // Step 5: System-level store
+        let system_backend = SystemStoreBackend::new(key_name);
+        if let Some(data) = system_backend.load_identity_string()? {
+            return Self::load_from_string(&data);
+        }
+
+        // Step 6-7: File-based key
         let key_path = Self::key_path_from_env_or_default();
         let file_backend = FileKeyBackend::new(key_path.clone());
         if let Some(data) = file_backend.load_identity_string()? {
             return Self::load_from_string(&data);
         }
         Err(SecretsError::KeyLoadFailed(format!(
-            "no key found (DOTENVAGE_AGE_KEY, AGE_KEY, EKG_AGE_KEY, OS keychain, or key file at {})",
+            "no key found (env vars, OS keychain, system store, \
+             or key file at {})",
             key_path.display()
         )))
     }
@@ -779,7 +1209,13 @@ impl SecretManager {
         Ok(Self { identity })
     }
 
-    fn identity_string(&self) -> String {
+    /// Returns the raw identity string (`AGE-SECRET-KEY-1...`).
+    ///
+    /// Use this when you need to embed the key in a service definition
+    /// for environments where keychain access is unavailable (e.g.,
+    /// containers). Handle the returned string carefully — it is the
+    /// private key in plaintext.
+    pub fn identity_string(&self) -> String {
         self.identity.to_string().expose_secret().to_string()
     }
 

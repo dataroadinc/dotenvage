@@ -19,4 +19,10 @@ pub use crate::loader::{
     EnvLoader,
     Os,
 };
-pub use crate::manager::SecretManager;
+pub use crate::manager::{
+    KeyGenOptions,
+    KeyGenResult,
+    KeyLocation,
+    KeyStoreTarget,
+    SecretManager,
+};
