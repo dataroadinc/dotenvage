@@ -813,6 +813,47 @@ impl EnvLoader {
         Self::write_env_file_for_write(path, &vars)
     }
 
+    /// Removes a variable from `.env.local` in the current working directory.
+    ///
+    /// Returns the path that was written (`{cwd}/.env.local`), or the path
+    /// unchanged if the file did not exist or did not contain the key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target file cannot be read, parsed, or written.
+    pub fn unset_var(&self, key: &str) -> SecretsResult<PathBuf> {
+        self.unset_var_in_dir(key, ".")
+    }
+
+    /// Removes a variable from `.env.local` in a specific directory.
+    ///
+    /// Returns the path that was written (`{dir}/.env.local`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target file cannot be read, parsed, or written.
+    pub fn unset_var_in_dir(&self, key: &str, dir: impl AsRef<Path>) -> SecretsResult<PathBuf> {
+        let path = dir.as_ref().join(".env.local");
+        self.unset_var_in_file(key, &path)?;
+        Ok(path)
+    }
+
+    /// Removes a variable from a specific `.env` file path.
+    ///
+    /// If the file does not exist or does not contain `key`, this is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target file cannot be read, parsed, or written.
+    pub fn unset_var_in_file(&self, key: &str, path: impl AsRef<Path>) -> SecretsResult<()> {
+        let path = path.as_ref();
+        let mut vars = Self::read_env_file_for_write(path)?;
+        if vars.remove(key).is_some() {
+            Self::write_env_file_for_write(path, &vars)?;
+        }
+        Ok(())
+    }
+
     /// Parses an env file into a key-value map for write/update operations.
     fn read_env_file_for_write(path: &Path) -> SecretsResult<HashMap<String, String>> {
         if !path.exists() {
