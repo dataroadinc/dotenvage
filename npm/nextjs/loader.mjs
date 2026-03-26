@@ -30,8 +30,12 @@ let loaded = false;
  * Always loads from dotenvage in all environments (local, Vercel CI, production)
  */
 export function loadEnv() {
-  // Only load once
-  if (loaded) {
+  // Only load once — check both the module-scoped flag and the cross-process
+  // sentinel set by preinit.mjs (or a prior loadEnv call in a parent process).
+  // Without this, a child process spawned by wrapper.mjs would re-read .env
+  // files from disk, clobbering the properly-layered values already in
+  // process.env (e.g. .env.local overrides lost).
+  if (loaded || process.env.__DOTENVAGE_LOADED) {
     return;
   }
 
@@ -58,6 +62,7 @@ export function loadEnv() {
     }
 
     loaded = true;
+    process.env.__DOTENVAGE_LOADED = "1";
   } catch (error) {
     // Always show errors - we need to know if loading fails
     const errorMessage =

@@ -50,6 +50,8 @@ export declare class JsSecretManager {
   decryptValue(value: string): string
   /** Checks if a value is in a recognized encrypted format */
   isEncrypted(value: string): boolean
+  /** Returns the raw identity string (`AGE-SECRET-KEY-1...`) */
+  identityString(): string
   /** Creates a SecretManager from an existing identity string */
   static fromIdentityString(identity: string): JsSecretManager
 }

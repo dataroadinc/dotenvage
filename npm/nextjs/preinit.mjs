@@ -29,8 +29,9 @@ let loaded = false;
  * so by loading first, our decrypted values take precedence over the encrypted .env files.
  */
 function loadEnvPreinit() {
-  // Only load once
-  if (loaded) {
+  // Only load once — check both the module-scoped flag and the cross-process
+  // sentinel so that a child process inheriting our env doesn't re-load.
+  if (loaded || process.env.__DOTENVAGE_LOADED) {
     return;
   }
 
@@ -72,6 +73,9 @@ function loadEnvPreinit() {
     }
 
     loaded = true;
+    // Sentinel survives into child processes spawned with env: process.env,
+    // so loader.mjs / preinit.mjs in the child will skip re-loading.
+    process.env.__DOTENVAGE_LOADED = "1";
   } catch (error) {
     // Always show errors - we need to know if loading fails
     const errorMessage =

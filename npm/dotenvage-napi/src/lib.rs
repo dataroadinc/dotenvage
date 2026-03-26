@@ -64,6 +64,12 @@ impl JsSecretManager {
         SecretManager::is_encrypted(&value)
     }
 
+    /// Returns the raw identity string (`AGE-SECRET-KEY-1...`)
+    #[napi]
+    pub fn identity_string(&self) -> String {
+        self.inner.identity_string()
+    }
+
     /// Creates a SecretManager from an existing identity string
     #[napi(factory)]
     pub fn from_identity_string(identity: String) -> Result<Self> {
