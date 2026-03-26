@@ -1654,6 +1654,7 @@ impl EnvLoader {
 ///
 /// assert!(AutoDetectPatterns::should_encrypt("API_TOKEN"));
 /// assert!(AutoDetectPatterns::should_encrypt("DATABASE_PASSWORD"));
+/// assert!(AutoDetectPatterns::should_encrypt("RECOVERY_PHRASE"));
 /// assert!(!AutoDetectPatterns::should_encrypt("PORT"));
 /// assert!(!AutoDetectPatterns::should_encrypt("AWS_REGION"));
 /// ```
@@ -1670,6 +1671,7 @@ impl AutoDetectPatterns {
         "SECRET",
         "PASSWORD",
         "PASSPHRASE",
+        "PHRASE",
         "CREDENTIAL",
         "_KEY",
         "API_KEY",
