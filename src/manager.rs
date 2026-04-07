@@ -313,12 +313,22 @@ impl KeyBackend for SystemStoreBackend {
 
 /// Returns the system store path for a given key name.
 ///
-/// - macOS: `/Library/Keychains/System.keychain` (no file path; uses the System
-///   Keychain API)
-/// - Linux: `/etc/dotenvage/<key-name>.key`
+/// When `DOTENVAGE_SYSTEM_STORE_DIR` is set, uses that directory
+/// instead of the platform default. This lets daemon processes
+/// store keys alongside their other configuration (e.g.
+/// `/etc/myapp/` instead of `/etc/dotenvage/`).
+///
+/// Default directories:
+/// - Unix (macOS/Linux): `/etc/dotenvage/<key-name>.key`
 /// - Windows: `%ProgramData%\dotenvage\<key-name>.key`
 fn system_store_path_for(_key_name: &str) -> PathBuf {
-    #[cfg(target_os = "linux")]
+    if let Ok(dir) = std::env::var("DOTENVAGE_SYSTEM_STORE_DIR")
+        && !dir.is_empty()
+    {
+        return PathBuf::from(dir).join(format!("{}.key", _key_name));
+    }
+
+    #[cfg(unix)]
     {
         PathBuf::from("/etc/dotenvage").join(format!("{}.key", _key_name))
     }
@@ -331,35 +341,29 @@ fn system_store_path_for(_key_name: &str) -> PathBuf {
             .join(format!("{}.key", _key_name))
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        // macOS uses System Keychain, not a file path.
-        // Return a sentinel path for display purposes.
-        PathBuf::from("/Library/Keychains/System.keychain")
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    #[cfg(not(any(unix, target_os = "windows")))]
     {
         PathBuf::from("/etc/dotenvage").join(format!("{}.key", _key_name))
     }
 }
 
 fn load_from_system_store_impl(key_name: &str) -> SecretsResult<Option<String>> {
+    // Try the System Keychain first on macOS (interactive users).
     #[cfg(target_os = "macos")]
-    {
-        load_from_macos_system_keychain(key_name)
+    if let Some(data) = load_from_macos_system_keychain(key_name)? {
+        return Ok(Some(data));
     }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        let path = system_store_path_for(key_name);
-        if !path.exists() {
-            return Ok(None);
-        }
-        let data = std::fs::read_to_string(&path)
-            .map_err(|e| SecretsError::KeyLoadFailed(format!("read {}: {}", path.display(), e)))?;
-        Ok(normalize_key_data(&data))
+    // Fall back to the file-based system store on all platforms.
+    // On macOS this serves daemon processes that cannot access the
+    // System Keychain due to ACL restrictions.
+    let path = system_store_path_for(key_name);
+    if !path.exists() {
+        return Ok(None);
     }
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| SecretsError::KeyLoadFailed(format!("read {}: {}", path.display(), e)))?;
+    Ok(normalize_key_data(&data))
 }
 
 fn save_to_system_store_impl(key_name: &str, identity: &str) -> SecretsResult<()> {
@@ -472,7 +476,7 @@ fn save_to_macos_system_keychain(key_name: &str, identity: &str) -> SecretsResul
     use security_framework::os::macos::keychain::SecKeychain;
 
     let keychain = SecKeychain::open("/Library/Keychains/System.keychain")
-        .map_err(|e| SecretsError::KeySaveFailed(format!("cannot open System Keychain: {}", e)))?;
+        .map_err(|e| SecretsError::KeySaveFailed(format!("cannot open System Keychain: {e}")))?;
 
     let service = SecretManager::keychain_service_name();
     keychain
@@ -480,18 +484,25 @@ fn save_to_macos_system_keychain(key_name: &str, identity: &str) -> SecretsResul
         .map_err(|e| {
             let msg = e.to_string();
             if msg.contains("Authorization") || msg.contains("permission") || e.code() == -25293 {
-                // errSecAuthFailed = -25293
                 return SecretsError::InsufficientPrivileges(format!(
-                    "cannot write to System Keychain (try with sudo): {}",
-                    msg
+                    "cannot write to System Keychain \
+                     (try with sudo): {msg}"
                 ));
             }
             SecretsError::KeySaveFailed(format!(
                 "failed to save to macOS System Keychain \
-                 (service='{}', account='{}'): {}",
-                service, key_name, msg
+                 (service='{service}', account='{key_name}'): {msg}"
             ))
         })
+}
+
+/// Dotenvage configuration variables discovered from a `.env`
+/// file before key loading.
+struct DotenvageVars {
+    /// `AGE_KEY_NAME` or `*_AGE_KEY_NAME` value.
+    age_key_name: Option<String>,
+    /// `DOTENVAGE_SYSTEM_STORE_DIR` value.
+    system_store_dir: Option<String>,
 }
 
 impl SecretManager {
@@ -1121,85 +1132,83 @@ impl SecretManager {
     /// is found but encrypted. AGE key name variables must be plaintext because
     /// they are needed for key discovery, which happens before decryption.
     pub fn discover_age_key_name_from_env_files() -> SecretsResult<()> {
-        // Skip if AGE_KEY_NAME is already set in environment
-        if std::env::var("AGE_KEY_NAME").is_ok() {
-            return Ok(());
-        }
-
         // Try to read .env.local first, then .env
         let env_files = [".env.local", ".env"];
 
         for env_file in &env_files {
-            match Self::find_age_key_name_in_file(env_file)? {
-                Some(key_name) => {
-                    unsafe {
-                        std::env::set_var("AGE_KEY_NAME", key_name);
-                    }
-                    return Ok(());
+            let vars = Self::find_dotenvage_vars_in_file(env_file)?;
+            if let Some(key_name) = vars.age_key_name
+                && std::env::var("AGE_KEY_NAME").is_err()
+            {
+                // SAFETY: called during single-threaded startup.
+                unsafe {
+                    std::env::set_var("AGE_KEY_NAME", key_name);
                 }
-                None => continue,
+            }
+            if let Some(dir) = vars.system_store_dir
+                && std::env::var("DOTENVAGE_SYSTEM_STORE_DIR").is_err()
+            {
+                unsafe {
+                    std::env::set_var("DOTENVAGE_SYSTEM_STORE_DIR", dir);
+                }
             }
         }
 
         Ok(())
     }
 
-    /// Searches a single .env file for AGE_KEY_NAME or *_AGE_KEY_NAME
-    /// variables.
+    /// Searches a single `.env` file for dotenvage configuration
+    /// variables that must be resolved before key loading.
     ///
-    /// Returns `Some(plaintext_value)` if a plaintext AGE key name variable
-    /// is found, `None` if no AGE key name variable is found, or an error if
-    /// an encrypted AGE key name variable is found.
-    ///
-    /// **Important**: AGE key name variables (e.g., `EKG_AGE_KEY_NAME`) must
-    /// be plaintext because they are needed for key discovery, which happens
-    /// before decryption is possible. If an encrypted AGE key name variable
-    /// is found, this function returns an error.
+    /// Discovered variables:
+    /// - `AGE_KEY_NAME` or `*_AGE_KEY_NAME` — determines which key file or
+    ///   keychain account to load.
+    /// - `DOTENVAGE_SYSTEM_STORE_DIR` — overrides the directory for the
+    ///   file-based system store (default `/etc/dotenvage/`).
     ///
     /// # Errors
     ///
-    /// Returns an error if an AGE key name variable is found but encrypted.
-    /// The error message includes the variable name and file path to help
-    /// identify and fix the issue.
-    fn find_age_key_name_in_file(file_path: &str) -> SecretsResult<Option<String>> {
-        let content = std::fs::read_to_string(file_path).ok();
+    /// Returns an error if an AGE key name variable is found but
+    /// encrypted.
+    fn find_dotenvage_vars_in_file(file_path: &str) -> SecretsResult<DotenvageVars> {
+        let mut vars = DotenvageVars {
+            age_key_name: None,
+            system_store_dir: None,
+        };
 
-        let Some(content) = content else {
-            return Ok(None);
+        let Ok(content) = std::fs::read_to_string(file_path) else {
+            return Ok(vars);
         };
 
         for line in content.lines() {
             let line = line.trim();
-
-            // Skip comments and empty lines
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-
-            // Look for KEY_NAME=value patterns
             let Some((key, value)) = line.split_once('=') else {
                 continue;
             };
             let key = key.trim();
             let value = value.trim().trim_matches('"').trim_matches('\'');
 
-            // Check for AGE_KEY_NAME or *_AGE_KEY_NAME pattern
             if (key == "AGE_KEY_NAME" || key.ends_with("_AGE_KEY_NAME")) && !value.is_empty() {
-                // AGE key name variables must be plaintext - they are needed for key discovery
                 if Self::is_encrypted(value) {
                     return Err(SecretsError::KeyLoadFailed(format!(
-                        "found encrypted AGE key name variable '{}' in {}: \
-                         AGE key name variables (e.g., EKG_AGE_KEY_NAME, AGE_KEY_NAME) must be \
-                         plaintext because they are used to discover the encryption key. \
-                         Please decrypt this variable or remove it from your .env file.",
-                        key, file_path
+                        "found encrypted AGE key name variable \
+                         '{key}' in {file_path}: AGE key name \
+                         variables must be plaintext because they \
+                         are used to discover the encryption key."
                     )));
                 }
-                return Ok(Some(value.to_string()));
+                vars.age_key_name = Some(value.to_string());
+            }
+
+            if key == "DOTENVAGE_SYSTEM_STORE_DIR" && !value.is_empty() {
+                vars.system_store_dir = Some(value.to_string());
             }
         }
 
-        Ok(None)
+        Ok(vars)
     }
 
     fn load_from_string(data: &str) -> SecretsResult<Self> {
