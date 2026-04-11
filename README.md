@@ -501,8 +501,8 @@ Keys are discovered in this priority order:
    - Linux: kernel keyutils (no D-Bus required)
    - Windows: Credential Manager
 5. **System-level store** (for daemon processes):
-   - macOS: System Keychain
-     (`/Library/Keychains/System.keychain`)
+   - macOS: System Keychain first, then file fallback at
+     `/etc/dotenvage/<key-name>.key`
    - Linux: `/etc/dotenvage/<key-name>.key`
    - Windows: `%ProgramData%\dotenvage\<key-name>.key`
 6. **`AGE_KEY_NAME`** from .env → key file at
@@ -539,6 +539,40 @@ sudo dotenvage keygen --store system
 
 The daemon then discovers the key automatically via step 5 in
 the discovery chain — no environment variable embedding needed.
+
+### Custom system store directory
+
+Set `DOTENVAGE_SYSTEM_STORE_DIR` when the file-based system store
+should live outside the platform default location.
+
+```bash
+# Example: co-locate the dotenvage system key with your daemon config
+DOTENVAGE_SYSTEM_STORE_DIR=/etc/myapp
+```
+
+When this variable is set, dotenvage loads and writes the system
+store key at:
+
+- Unix: `$DOTENVAGE_SYSTEM_STORE_DIR/<key-name>.key`
+- Windows: `%DOTENVAGE_SYSTEM_STORE_DIR%\<key-name>.key`
+
+This is useful for service deployments that keep all persistent
+state under an application-specific directory instead of the shared
+default.
+
+You can place `DOTENVAGE_SYSTEM_STORE_DIR` in `.env` or
+`.env.local`. dotenvage resolves it before key loading, just like
+`AGE_KEY_NAME`.
+
+### macOS daemon fallback behavior
+
+On macOS, dotenvage now checks the System Keychain first for
+system-level keys. If the key is not present there, it falls back
+to the file-based system store.
+
+This supports launchd daemons and other non-interactive processes
+that may not have permission to read from the System Keychain but
+can still access a root-managed key file.
 
 ### Project-Specific Keys
 
