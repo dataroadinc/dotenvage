@@ -44,12 +44,13 @@ jobs:
         id: check
         run: |
           MESSAGE="${{ steps.commit.outputs.message }}"
-          if [[ "$MESSAGE" == *"build(deps)"* ]] || [[ "$MESSAGE" == *"dependencies"* ]]; then
+          FIRST_LINE="$(printf '%s\n' "$MESSAGE" | head -n 1)"
+          if [[ "$FIRST_LINE" =~ ^build\(deps\): ]]; then
             echo "is_dependency_update=true" >> $GITHUB_OUTPUT
-            echo "✅ This is a dependency update"
+            echo "✅ This is an auto-release dependency update"
           else
             echo "is_dependency_update=false" >> $GITHUB_OUTPUT
-            echo "ℹ️  Not a dependency update, skipping"
+            echo "ℹ️  Commit message does not match build(deps):..., skipping"
           fi
 
   bump-version:
