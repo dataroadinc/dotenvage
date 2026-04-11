@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 8
       - name: Setup Node.js
@@ -92,7 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - name: Setup Python
@@ -221,7 +221,7 @@ jobs:
           sha256sum dotenvage-${{ matrix.platform.target }}.zip > dotenvage-${{ matrix.platform.target }}.sha256
 
       - name: Upload CLI artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: cli-${{ matrix.platform.target }}
           path: |
@@ -232,7 +232,7 @@ jobs:
 
       # Build npm NAPI bindings
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 8
       - name: Setup Node.js
@@ -262,7 +262,7 @@ jobs:
             --release \
             --target ${{ matrix.platform.target }}
       - name: Upload npm .node artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: npm-node-files-${{ matrix.platform.target }}
           path: npm/*.node
@@ -286,7 +286,7 @@ jobs:
       # Skip aarch64-pc-windows-msvc: no ARM64 Windows runners, can't cross-compile Python
       - name: Install uv
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: Setup Python
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
         run: uv python install 3.12
@@ -306,7 +306,7 @@ jobs:
             --out dist/
       - name: Upload Python wheel artifact
         if: matrix.platform.target != 'aarch64-pc-windows-msvc'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: python-wheels-${{ matrix.platform.target }}
           path: python/dist/*.whl
@@ -360,7 +360,7 @@ jobs:
 
       # Download all CLI artifacts
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: cli-*
           merge-multiple: true
@@ -410,7 +410,7 @@ jobs:
 
       # Setup Node.js/pnpm for npm publish
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 8
       - name: Setup Node.js
@@ -421,7 +421,7 @@ jobs:
 
       # Setup Python/uv for PyPI publish
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
       - name: Setup Python
         run: uv python install 3.12
 
@@ -452,7 +452,7 @@ jobs:
 
       # Download npm .node files
       - name: Download npm .node file artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: npm-node-files-*
           merge-multiple: true
@@ -478,7 +478,7 @@ jobs:
 
       # Download Python wheel artifacts
       - name: Download Python wheel artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: python-wheels-*
           merge-multiple: true
