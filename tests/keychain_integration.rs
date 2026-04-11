@@ -323,8 +323,8 @@ fn system_store_path_is_platform_appropriate() {
 
     #[cfg(target_os = "macos")]
     assert!(
-        path_str.contains("System.keychain"),
-        "macOS system store should reference System.keychain, got: {}",
+        path_str.starts_with("/etc/dotenvage/"),
+        "macOS system store path should point at the file-based fallback under /etc/dotenvage/, got: {}",
         path_str
     );
 
