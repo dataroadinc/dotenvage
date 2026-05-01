@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "dotenvage"
-version = "0.6.0"
+version = "0.6.1"
 description = "Python bindings for dotenvage - encrypt secrets in .env files using age encryption"
 readme = "README.md"
 requires-python = ">=3.10"
