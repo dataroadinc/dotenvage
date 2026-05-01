@@ -51,7 +51,12 @@ path = "src/main.rs"
 
 [features]
 default = ["os-keychain"]
-os-keychain = ["keyring"]
+os-keychain = [
+    "dep:keyring-core",
+    "dep:apple-native-keyring-store",
+    "dep:linux-keyutils-keyring-store",
+    "dep:windows-native-keyring-store",
+]
 
 [dependencies]
 age = { version = "0.11.3", features = ["armor"] }
@@ -63,16 +68,17 @@ clap = { version = "4.6.1", features = ["derive"] }
 dirs = "6.0.0"
 tempfile = "3.27"
 serde_json = "1.0"
+keyring-core = { version = "1.0", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3.6", features = ["apple-native"], optional = true }
+apple-native-keyring-store = { version = "1.0", features = ["keychain"], optional = true }
 security-framework = "3.7"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3.6", features = ["linux-native"], optional = true }
+linux-keyutils-keyring-store = { version = "1.0", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3.6", features = ["windows-native"], optional = true }
+windows-native-keyring-store = { version = "1.0", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["user"] }

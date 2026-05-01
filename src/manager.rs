@@ -228,15 +228,52 @@ fn normalize_key_data(data: &str) -> Option<String> {
 }
 
 #[cfg(feature = "os-keychain")]
+fn ensure_default_store() -> Result<(), String> {
+    use std::sync::OnceLock;
+    static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+    INIT.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let store = apple_native_keyring_store::keychain::Store::new()
+                .map_err(|e| format!("failed to init macOS keychain store: {e}"))?;
+            keyring_core::set_default_store(store);
+            Ok(())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let store = linux_keyutils_keyring_store::Store::new()
+                .map_err(|e| format!("failed to init linux keyutils store: {e}"))?;
+            keyring_core::set_default_store(store);
+            Ok(())
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let store = windows_native_keyring_store::Store::new()
+                .map_err(|e| format!("failed to init windows credential store: {e}"))?;
+            keyring_core::set_default_store(store);
+            Ok(())
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            Err("no OS keychain backend available for this platform".to_string())
+        }
+    })
+    .clone()
+}
+
+#[cfg(feature = "os-keychain")]
 fn load_from_os_keychain(service: &str, account: &str) -> SecretsResult<Option<String>> {
-    let entry = match keyring::Entry::new(service, account) {
+    if ensure_default_store().is_err() {
+        return Ok(None);
+    }
+    let entry = match keyring_core::Entry::new(service, account) {
         Ok(e) => e,
         Err(_) => return Ok(None),
     };
     match entry.get_password() {
         Ok(password) => Ok(normalize_key_data(&password)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(keyring::Error::PlatformFailure(_)) => Ok(None),
+        Err(keyring_core::Error::NoEntry) => Ok(None),
+        Err(keyring_core::Error::PlatformFailure(_)) => Ok(None),
         Err(e) => Err(SecretsError::KeyLoadFailed(format!(
             "OS keychain read failed (service='{}', account='{}'): {}",
             service, account, e
@@ -251,7 +288,8 @@ fn load_from_os_keychain(_service: &str, _account: &str) -> SecretsResult<Option
 
 #[cfg(feature = "os-keychain")]
 fn save_to_os_keychain(service: &str, account: &str, identity: &str) -> SecretsResult<()> {
-    let entry = keyring::Entry::new(service, account).map_err(|e| {
+    ensure_default_store().map_err(SecretsError::KeySaveFailed)?;
+    let entry = keyring_core::Entry::new(service, account).map_err(|e| {
         SecretsError::KeySaveFailed(format!("failed to create keychain entry: {}", e))
     })?;
     entry.set_password(identity).map_err(|e| {
@@ -271,12 +309,13 @@ fn save_to_os_keychain(_service: &str, _account: &str, _identity: &str) -> Secre
 
 #[cfg(feature = "os-keychain")]
 fn delete_from_os_keychain(service: &str, account: &str) -> SecretsResult<()> {
-    let entry = keyring::Entry::new(service, account).map_err(|e| {
+    ensure_default_store().map_err(SecretsError::KeySaveFailed)?;
+    let entry = keyring_core::Entry::new(service, account).map_err(|e| {
         SecretsError::KeySaveFailed(format!("failed to create keychain entry: {}", e))
     })?;
     match entry.delete_credential() {
         Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(keyring_core::Error::NoEntry) => Ok(()),
         Err(e) => Err(SecretsError::KeySaveFailed(format!(
             "failed to delete from OS keychain (service='{}', account='{}'): {}",
             service, account, e
