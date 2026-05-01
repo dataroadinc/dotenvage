@@ -1552,4 +1552,15 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_encrypt_value_no_newline() {
+        let manager = SecretManager::generate().expect("failed to generate manager");
+        let secret = "a1b2c3d4e5f6789012345678901234567890abcdef0123456789012345678901";
+        let encrypted = manager.encrypt_value(secret).expect("encryption failed");
+        assert!(
+            !encrypted.contains('\n'),
+            "encrypted value should not contain newlines"
+        );
+    }
 }
