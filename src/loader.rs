@@ -330,8 +330,12 @@ impl EnvLoader {
     ///
     /// # Errors
     ///
-    /// Returns an error if any file cannot be read or parsed, or if
-    /// decryption fails for any encrypted value.
+    /// Returns an error if any file cannot be read or parsed.
+    ///
+    /// Values that fail to decrypt (e.g. encrypted with a different age
+    /// key) are silently dropped from the result; any value already set
+    /// in the parent process for that key is therefore preserved. Each
+    /// skipped value is reported on stderr.
     ///
     /// # Returns
     ///
@@ -378,8 +382,12 @@ impl EnvLoader {
     ///
     /// # Errors
     ///
-    /// Returns an error if any file cannot be read or parsed, or if
-    /// decryption fails for any encrypted value.
+    /// Returns an error if any file cannot be read or parsed.
+    ///
+    /// Values that fail to decrypt (e.g. encrypted with a different age
+    /// key) are silently dropped from the result; any value already set
+    /// in the parent process for that key is therefore preserved. Each
+    /// skipped value is reported on stderr.
     pub fn load_from_dir(&self, dir: impl AsRef<Path>) -> SecretsResult<Vec<PathBuf>> {
         let dir = dir.as_ref();
         let mut env_vars = HashMap::new();
@@ -458,8 +466,12 @@ impl EnvLoader {
     ///
     /// # Errors
     ///
-    /// Returns an error if any file cannot be read or parsed, or if
-    /// decryption fails for any encrypted value.
+    /// Returns an error if any file cannot be read or parsed.
+    ///
+    /// Values that fail to decrypt (e.g. encrypted with a different age
+    /// key) are silently dropped from the result; any value already set
+    /// in the parent process for that key is therefore preserved. Each
+    /// skipped value is reported on stderr.
     pub fn collect_all_vars_from_dir(
         &self,
         dir: impl AsRef<Path>,
@@ -660,7 +672,9 @@ impl EnvLoader {
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read or if decryption fails.
+    /// Returns an error if the file cannot be read or parsed. Values that
+    /// fail to decrypt are silently dropped from the returned map (see
+    /// [`parse_and_decrypt`](Self::parse_and_decrypt)).
     pub fn load_env_file(&self, path: &Path) -> SecretsResult<HashMap<String, String>> {
         let content =
             std::fs::read_to_string(path).map_err(|e| SecretsError::EnvFileReadFailed {
@@ -672,9 +686,18 @@ impl EnvLoader {
 
     /// Parses env file content and decrypts encrypted values.
     ///
+    /// Values that fail to decrypt — for example, entries encrypted with
+    /// a different age key, corrupted ciphertext, or invalid base64 — are
+    /// silently omitted from the returned map. The caller layers this map
+    /// over the process environment, so a dropped key leaves any value
+    /// already set in the parent process untouched. Each skip is reported
+    /// on stderr so the cause of a missing variable can be diagnosed.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the content cannot be parsed or if decryption fails.
+    /// The current implementation never returns an error; the `Result`
+    /// is retained so the parser can surface I/O or syntax errors in
+    /// future revisions without a breaking API change.
     pub fn parse_and_decrypt(
         &self,
         content: &str,
@@ -694,13 +717,20 @@ impl EnvLoader {
                 {
                     value = value[1..value.len() - 1].to_string();
                 }
-                let decrypted = self.manager.decrypt_value(&value).map_err(|e| {
-                    SecretsError::EnvFileParseFailed {
-                        path: path.display().to_string(),
-                        reason: format!("line {} for '{}': {}", line_num + 1, key, e),
+                match self.manager.decrypt_value(&value) {
+                    Ok(decrypted) => {
+                        vars.insert(key, decrypted);
                     }
-                })?;
-                vars.insert(key, decrypted);
+                    Err(err) => {
+                        eprintln!(
+                            "dotenvage: skipping '{}' in {} (line {}): {}",
+                            key,
+                            path.display(),
+                            line_num + 1,
+                            err
+                        );
+                    }
+                }
             }
         }
         Ok(vars)
