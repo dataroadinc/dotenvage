@@ -493,16 +493,30 @@ jobs:
             echo "⚠️  Warning: Expected at least 5 wheels (found $WHEEL_COUNT)"
           fi
 
-      # Publish to crates.io
+      # Publish to crates.io (skip if version already published)
       - name: Publish to crates.io
-        run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
+          VERSION: ${{ needs.version-check.outputs.new_version }}
+        run: |
+          if curl -sfL "https://crates.io/api/v1/crates/dotenvage/$VERSION" >/dev/null 2>&1; then
+            echo "ℹ️  dotenvage $VERSION already on crates.io, skipping"
+          else
+            cargo publish --allow-dirty
+          fi
 
-      # Publish to npm
+      # Publish to npm (skip if version already published)
       - name: Publish to npmjs.org
         working-directory: npm
-        run: pnpm publish --access public --no-git-checks --provenance --ignore-scripts
+        env:
+          VERSION: ${{ needs.version-check.outputs.new_version }}
+        run: |
+          NAME=$(jq -r .name package.json)
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "ℹ️  $NAME@$VERSION already on npm, skipping"
+          else
+            pnpm publish --access public --no-git-checks --provenance --ignore-scripts
+          fi
 
       # Publish to PyPI (using Trusted Publishing / OIDC)
       - name: Publish to PyPI
