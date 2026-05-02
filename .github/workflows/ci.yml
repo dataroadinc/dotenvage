@@ -493,30 +493,37 @@ jobs:
             echo "⚠️  Warning: Expected at least 5 wheels (found $WHEEL_COUNT)"
           fi
 
-      # Publish to crates.io (skip if version already published)
+      # Publish to crates.io (treats "already published" as success)
       - name: Publish to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
           VERSION: ${{ needs.version-check.outputs.new_version }}
         run: |
-          if curl -sfL "https://crates.io/api/v1/crates/dotenvage/$VERSION" >/dev/null 2>&1; then
+          rc=0
+          LOG=$(cargo publish --allow-dirty 2>&1) || rc=$?
+          echo "$LOG"
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          if echo "$LOG" | grep -q "already exists on crates.io"; then
             echo "ℹ️  dotenvage $VERSION already on crates.io, skipping"
-          else
-            cargo publish --allow-dirty
+            exit 0
           fi
+          exit "$rc"
 
-      # Publish to npm (skip if version already published)
+      # Publish to npm (treats "already published" as success)
       - name: Publish to npmjs.org
         working-directory: npm
         env:
           VERSION: ${{ needs.version-check.outputs.new_version }}
         run: |
-          NAME=$(jq -r .name package.json)
-          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
-            echo "ℹ️  $NAME@$VERSION already on npm, skipping"
-          else
-            pnpm publish --access public --no-git-checks --provenance --ignore-scripts
+          rc=0
+          LOG=$(pnpm publish --access public --no-git-checks --provenance --ignore-scripts 2>&1) || rc=$?
+          echo "$LOG"
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          if echo "$LOG" | grep -qE "previously published|cannot publish over|EPUBLISHCONFLICT"; then
+            echo "ℹ️  $VERSION already on npm, skipping"
+            exit 0
           fi
+          exit "$rc"
 
       # Publish to PyPI (using Trusted Publishing / OIDC)
       - name: Publish to PyPI
