@@ -42,8 +42,9 @@ jobs:
 
       - name: Check if dependency update
         id: check
+        env:
+          MESSAGE: ${{ steps.commit.outputs.message }}
         run: |
-          MESSAGE="${{ steps.commit.outputs.message }}"
           FIRST_LINE="$(printf '%s\n' "$MESSAGE" | head -n 1)"
           if [[ "$FIRST_LINE" =~ ^build\(deps\): ]]; then
             echo "is_dependency_update=true" >> $GITHUB_OUTPUT
