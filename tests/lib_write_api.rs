@@ -3,7 +3,10 @@
 use std::fs;
 
 use dotenvage::{
+    CouldBeSecret,
     EnvLoader,
+    NonSecret,
+    Secret,
     SecretManager,
 };
 use tempfile::TempDir;
@@ -66,6 +69,95 @@ fn set_var_in_file_keeps_age_key_config_plain() {
     let raw = fs::read_to_string(&env_path).unwrap();
     assert!(raw.contains("AGE_KEY_NAME=myapp/prod"));
     assert!(!raw.contains("ENC[AGE:b64:"));
+}
+
+#[test]
+fn set_var_in_file_does_not_double_encrypt() {
+    let temp_dir = TempDir::new().unwrap();
+    let env_path = temp_dir.path().join(".env.local");
+
+    let manager = SecretManager::generate().unwrap();
+    let loader = EnvLoader::with_manager(manager.clone());
+
+    let encrypted = manager.encrypt_value("super-secret").unwrap();
+    loader
+        .set_var_in_file("WWKG_PASSPHRASE", &encrypted, &env_path)
+        .unwrap();
+
+    let raw = fs::read_to_string(&env_path).unwrap();
+    assert!(
+        raw.contains(&format!("WWKG_PASSPHRASE={}", encrypted)),
+        "expected value to be written unchanged, got: {}",
+        raw
+    );
+
+    let decrypted = loader.load_env_file(&env_path).unwrap();
+    assert_eq!(
+        decrypted.get("WWKG_PASSPHRASE"),
+        Some(&"super-secret".to_string())
+    );
+}
+
+#[test]
+fn set_write_var_in_file_secret_forces_encryption() {
+    let temp_dir = TempDir::new().unwrap();
+    let env_path = temp_dir.path().join(".env.local");
+
+    let manager = SecretManager::generate().unwrap();
+    let loader = EnvLoader::with_manager(manager.clone());
+
+    loader
+        .set_write_var_in_file(Secret("WWKG_ACTIVE_WORKSPACE", "alpha"), &env_path)
+        .unwrap();
+
+    let raw = fs::read_to_string(&env_path).unwrap();
+    assert!(
+        raw.contains("WWKG_ACTIVE_WORKSPACE=ENC[AGE:b64:"),
+        "expected encrypted value in file, got: {}",
+        raw
+    );
+
+    let decrypted = loader.load_env_file(&env_path).unwrap();
+    assert_eq!(
+        decrypted.get("WWKG_ACTIVE_WORKSPACE"),
+        Some(&"alpha".to_string())
+    );
+}
+
+#[test]
+fn set_write_var_in_file_non_secret_forces_plaintext() {
+    let temp_dir = TempDir::new().unwrap();
+    let env_path = temp_dir.path().join(".env.local");
+
+    let manager = SecretManager::generate().unwrap();
+    let loader = EnvLoader::with_manager(manager);
+
+    loader
+        .set_write_var_in_file(NonSecret("WWKG_PASSPHRASE", "super-secret"), &env_path)
+        .unwrap();
+
+    let raw = fs::read_to_string(&env_path).unwrap();
+    assert!(raw.contains("WWKG_PASSPHRASE=super-secret"));
+    assert!(!raw.contains("ENC[AGE:b64:"));
+}
+
+#[test]
+fn set_write_var_in_file_could_be_secret_uses_name_based_detection() {
+    let temp_dir = TempDir::new().unwrap();
+    let env_path = temp_dir.path().join(".env.local");
+
+    let manager = SecretManager::generate().unwrap();
+    let loader = EnvLoader::with_manager(manager.clone());
+
+    loader
+        .set_write_var_in_file(CouldBeSecret("WWKG_PASSPHRASE", "super-secret"), &env_path)
+        .unwrap();
+
+    let decrypted = loader.load_env_file(&env_path).unwrap();
+    assert_eq!(
+        decrypted.get("WWKG_PASSPHRASE"),
+        Some(&"super-secret".to_string())
+    );
 }
 
 #[test]

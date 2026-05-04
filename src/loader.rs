@@ -258,6 +258,44 @@ pub struct EnvLoader {
     manager: SecretManager,
 }
 
+/// A value that must be stored encrypted (unless it's already encrypted).
+#[derive(Debug, Clone, Copy)]
+pub struct Secret<'a>(pub &'a str, pub &'a str);
+
+/// A value that must be stored as plaintext (even if the name looks sensitive).
+#[derive(Debug, Clone, Copy)]
+pub struct NonSecret<'a>(pub &'a str, pub &'a str);
+
+/// A value that will be encrypted only if the name looks sensitive.
+#[derive(Debug, Clone, Copy)]
+pub struct CouldBeSecret<'a>(pub &'a str, pub &'a str);
+
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum WriteVar<'a> {
+    Secret(&'a str, &'a str),
+    NonSecret(&'a str, &'a str),
+    CouldBeSecret(&'a str, &'a str),
+}
+
+impl<'a> From<Secret<'a>> for WriteVar<'a> {
+    fn from(value: Secret<'a>) -> Self {
+        Self::Secret(value.0, value.1)
+    }
+}
+
+impl<'a> From<NonSecret<'a>> for WriteVar<'a> {
+    fn from(value: NonSecret<'a>) -> Self {
+        Self::NonSecret(value.0, value.1)
+    }
+}
+
+impl<'a> From<CouldBeSecret<'a>> for WriteVar<'a> {
+    fn from(value: CouldBeSecret<'a>) -> Self {
+        Self::CouldBeSecret(value.0, value.1)
+    }
+}
+
 impl EnvLoader {
     fn find_file_case_insensitive(dir: &Path, filename: &str) -> Option<PathBuf> {
         let target = filename.to_lowercase();
@@ -828,16 +866,47 @@ impl EnvLoader {
         value: &str,
         path: impl AsRef<Path>,
     ) -> SecretsResult<()> {
+        self.set_write_var_in_file(CouldBeSecret(key, value), path)
+    }
+
+    /// Sets a variable in a specific `.env` file path with an explicit
+    /// secret-ness.
+    ///
+    /// - [`Secret`] always encrypts (unless already encrypted)
+    /// - [`NonSecret`] always stores plaintext
+    /// - [`CouldBeSecret`] encrypts only when
+    ///   [`AutoDetectPatterns::should_encrypt`] returns `true`
+    ///
+    /// AGE key configuration variables (e.g., `AGE_KEY_NAME`) are always stored
+    /// as plaintext regardless of the chosen wrapper.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the target file cannot be read or parsed, encryption
+    /// fails, or the updated file cannot be written.
+    pub fn set_write_var_in_file<'a>(
+        &self,
+        var: impl Into<WriteVar<'a>>,
+        path: impl AsRef<Path>,
+    ) -> SecretsResult<()> {
+        let (key, value, should_encrypt) = match var.into() {
+            WriteVar::Secret(k, v) => (k, v, true),
+            WriteVar::NonSecret(k, v) => (k, v, false),
+            WriteVar::CouldBeSecret(k, v) => (k, v, AutoDetectPatterns::should_encrypt(k)),
+        };
+
         let path = path.as_ref();
         let mut vars = Self::read_env_file_for_write(path)?;
 
         // AGE key variables must stay plaintext for key discovery.
-        let final_value =
-            if !Self::is_age_key_variable(key) && AutoDetectPatterns::should_encrypt(key) {
-                self.manager.encrypt_value(value)?
-            } else {
-                value.to_string()
-            };
+        let is_age_key = Self::is_age_key_variable(key);
+        let already_encrypted = SecretManager::is_encrypted(value);
+
+        let final_value = if !is_age_key && should_encrypt && !already_encrypted {
+            self.manager.encrypt_value(value)?
+        } else {
+            value.to_string()
+        };
 
         vars.insert(key.to_string(), final_value);
         Self::write_env_file_for_write(path, &vars)

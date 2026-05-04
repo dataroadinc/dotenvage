@@ -16,8 +16,11 @@ pub use crate::error::{
 pub use crate::loader::{
     Arch,
     AutoDetectPatterns,
+    CouldBeSecret,
     EnvLoader,
+    NonSecret,
     Os,
+    Secret,
 };
 pub use crate::manager::{
     KeyGenOptions,
