@@ -136,7 +136,7 @@ If publishing still fails after configuration:
 7. **Check if pnpm version supports OIDC**:
    - pnpm should use npm's OIDC support
    - Verify pnpm version in workflow (currently using
-     pnpm/action-setup@v4)
+     pnpm/action-setup@v6)
    - Ensure npm CLI version in the runner supports OIDC (npm 11.5.1+)
 
 ## Why OIDC?
