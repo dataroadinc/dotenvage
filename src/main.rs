@@ -85,6 +85,14 @@ enum Commands {
         #[arg(short, long, default_value = ".env.local")]
         file: PathBuf,
     },
+    /// Unset (remove) a variable from an environment file
+    Unset {
+        /// Environment variable name to remove
+        key: String,
+        /// Environment file to update
+        #[arg(short, long, default_value = ".env.local")]
+        file: PathBuf,
+    },
     /// Get a decrypted secret value (scans .env files in order)
     Get {
         /// Environment variable name
@@ -177,6 +185,7 @@ fn main() -> Result<()> {
         Commands::Encrypt { file, keys, auto } => encrypt(file, keys, auto),
         Commands::Edit { file } => edit(file),
         Commands::Set { pair, file } => set(pair, file),
+        Commands::Unset { key, file } => unset(key, file),
         Commands::Get { key, file } => get(key, file, cli.verbose),
         Commands::List {
             file,
@@ -397,6 +406,16 @@ fn set(pair: String, file: PathBuf) -> Result<()> {
         "plain"
     };
     println!("✓ Set {} ({}) in {}", key, status, file.display());
+    Ok(())
+}
+
+fn unset(key: String, file: PathBuf) -> Result<()> {
+    let manager = SecretManager::new().context("Failed to load encryption key")?;
+    let loader = dotenvage::EnvLoader::with_manager(manager);
+    loader
+        .unset_var_in_file(&key, &file)
+        .with_context(|| format!("Failed to write {}", file.display()))?;
+    println!("✓ Unset {} in {}", key, file.display());
     Ok(())
 }
 
