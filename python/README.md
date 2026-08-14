@@ -37,7 +37,7 @@ print(f"Decrypted: {decrypted}")
 
 # Check if a value is encrypted
 print(dotenvage.SecretManager.is_encrypted(encrypted))  # True
-print(dotenvage.SecretManager.is_encrypted("plain"))    # False
+print(dotenvage.SecretManager.is_encrypted("plain"))  # False
 ```
 
 ## Loading .env files
@@ -64,9 +64,9 @@ patterns:
 import dotenvage
 
 # Keys containing PASSWORD, SECRET, KEY, TOKEN, etc. are detected
-dotenvage.should_encrypt("API_KEY")         # True
-dotenvage.should_encrypt("DATABASE_URL")    # False
-dotenvage.should_encrypt("SECRET_TOKEN")    # True
+dotenvage.should_encrypt("API_KEY")  # True
+dotenvage.should_encrypt("DATABASE_URL")  # False
+dotenvage.should_encrypt("SECRET_TOKEN")  # True
 ```
 
 ## Key discovery

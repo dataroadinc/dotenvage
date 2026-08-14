@@ -49,7 +49,7 @@ merge. Both packages will be published together.
 
 2. Add to GitHub repository secrets:
    - Go to:
-     https://github.com/dataroadinc/dotenvage/settings/secrets/actions
+     https://github.com/legra-ai/dotenvage/settings/secrets/actions
    - Click "New repository secret"
    - Name: `CRATES_IO` (or `CRATES_IO_TOKEN`)
    - Value: `<your-crates-io-token>`
@@ -75,7 +75,7 @@ This project uses npm's **Trusted Publishing** with OpenID Connect
 
 3. Configure the Trusted Publisher (all fields are case-sensitive):
 
-   - **Owner:** `dataroadinc`
+   - **Owner:** `legra-ai`
    - **Repository:** `dotenvage`
    - **Workflow filename:** `ci.yml` (the exact filename in
      `.github/workflows/`)
@@ -217,7 +217,7 @@ BREAKING CHANGE: Default key path changed from
 
 After pushing your version bump:
 
-1. Go to: https://github.com/dataroadinc/dotenvage/actions
+1. Go to: https://github.com/legra-ai/dotenvage/actions
 2. Watch the "CI/CD" workflow
 3. The "Release" job will show:
    - Version sync verification
@@ -233,7 +233,7 @@ After the workflow completes:
 
 ```bash
 # Check the new release
-open https://github.com/dataroadinc/dotenvage/releases
+open https://github.com/legra-ai/dotenvage/releases
 
 # Check crates.io (Rust crate)
 open https://crates.io/crates/dotenvage
@@ -290,7 +290,7 @@ incorrect.
   - Go to https://www.npmjs.com/package/@dotenvage/node → Package
     settings → Trusted Publishers
   - Check that all fields match exactly:
-    - Owner: `dataroadinc`
+    - Owner: `legra-ai`
     - Repository: `dotenvage`
     - Workflow filename: `ci.yml`
 - Ensure the workflow has `id-token: write` permission (already
@@ -306,7 +306,7 @@ The crates.io token is missing or invalid.
 set correctly in GitHub settings:
 
 - Go to:
-  https://github.com/dataroadinc/dotenvage/settings/secrets/actions
+  https://github.com/legra-ai/dotenvage/settings/secrets/actions
 - Ensure `CRATES_IO` or `CRATES_IO_TOKEN` exists with a valid token
 
 ### "Version mismatch detected"
@@ -341,7 +341,7 @@ The release won't happen if any check fails.
 - [x] Clippy passes (`cargo clippy`)
 - [ ] `CRATES_IO` token added to GitHub secrets
 - [ ] npm Trusted Publishing (OIDC) configured on npmjs.com
-  - [ ] Owner: `dataroadinc`
+  - [ ] Owner: `legra-ai`
   - [ ] Repository: `dotenvage`
   - [ ] Workflow: `ci.yml`
 - [ ] `@dotenvage` scope exists on npmjs.org

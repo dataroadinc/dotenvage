@@ -36,7 +36,7 @@ To ensure all commits are signed, configure branch protection rules:
 gh api repos/agnos-ai/dotenvage/branches/main/protection
 
 # Or check in the web UI:
-# https://github.com/dataroadinc/dotenvage/settings/branch_protection_rules
+# https://github.com/legra-ai/dotenvage/settings/branch_protection_rules
 ```
 
 ### Required Branch Protection Rules

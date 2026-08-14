@@ -16,7 +16,7 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
@@ -28,7 +28,7 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
@@ -44,7 +44,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Run tests
         run: cargo test
@@ -59,7 +59,7 @@ jobs:
       matrix:
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
         with:
@@ -90,7 +90,7 @@ jobs:
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -124,12 +124,12 @@ jobs:
       version_changed: ${{ steps.version.outputs.version_changed }}
       new_version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Get version info
         id: version
-        uses: dataroadinc/github-actions/.github/actions/get-version@main
+        uses: legra-ai/github-actions/.github/actions/get-version@main
 
   # Build all artifacts BEFORE creating release
   # This ensures we don't create a release if builds fail
@@ -157,7 +157,7 @@ jobs:
             use_zig: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -321,7 +321,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -333,7 +333,7 @@ jobs:
 
       # Use reusable actions for tool setup
       - name: Setup cocogitto
-        uses: dataroadinc/github-actions/.github/actions/setup-cocogitto@main
+        uses: legra-ai/github-actions/.github/actions/setup-cocogitto@main
 
       - name: Create Release Tag
         run: |
@@ -388,7 +388,7 @@ jobs:
       - name: Release Summary
         run: |
           echo "✅ Created GitHub release v${{ needs.version-check.outputs.new_version }}"
-          echo "📝 https://github.com/dataroadinc/dotenvage/releases/tag/v${{ needs.version-check.outputs.new_version }}"
+          echo "📝 https://github.com/legra-ai/dotenvage/releases/tag/v${{ needs.version-check.outputs.new_version }}"
 
   # Publish all packages after release is created
   publish-all:
@@ -401,7 +401,7 @@ jobs:
       id-token: write  # Required for OIDC authentication (npm/PyPI Trusted Publishing)
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: refs/tags/v${{ needs.version-check.outputs.new_version }}
 
@@ -431,10 +431,14 @@ jobs:
           WORKSPACE_VERSION=$(grep '^\[workspace\.package\]' -A 10 Cargo.toml | grep '^version' | head -1 | sed 's/.*"\(.*\)".*/\1/')
           NPM_VERSION=$(grep '"version"' npm/package.json | head -1 | sed 's/.*"\(.*\)".*/\1/')
           PYTHON_VERSION=$(grep '^version' python/pyproject.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          UV_LOCK_VERSION=$(awk '/^name = "dotenvage"$/ { getline; if ($1 == "version") { gsub(/"/, "", $3); print $3; exit } }' python/uv.lock)
+          ROOT_PACKAGE_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
           echo "Workspace version: $WORKSPACE_VERSION"
           echo "NPM version: $NPM_VERSION"
           echo "Python version: $PYTHON_VERSION"
+          echo "uv lock version: $UV_LOCK_VERSION"
+          echo "Root package version: $ROOT_PACKAGE_VERSION"
 
           MISMATCH=0
           if [ "$WORKSPACE_VERSION" != "$NPM_VERSION" ]; then
@@ -443,6 +447,14 @@ jobs:
           fi
           if [ "$WORKSPACE_VERSION" != "$PYTHON_VERSION" ]; then
             echo "❌ Python version mismatch!"
+            MISMATCH=1
+          fi
+          if [ "$WORKSPACE_VERSION" != "$UV_LOCK_VERSION" ]; then
+            echo "❌ uv lock version mismatch!"
+            MISMATCH=1
+          fi
+          if [ "$WORKSPACE_VERSION" != "$ROOT_PACKAGE_VERSION" ]; then
+            echo "❌ Root package version mismatch!"
             MISMATCH=1
           fi
           if [ "$MISMATCH" -eq 1 ]; then
@@ -469,11 +481,12 @@ jobs:
         working-directory: npm
         run: |
           echo "Verifying .node files:"
-          ls -lh *.node
+          ls -lh ./*.node
           NODE_COUNT=$(find . -name "*.node" | wc -l | tr -d ' ')
           echo "Found $NODE_COUNT .node file(s)"
           if [ "$NODE_COUNT" -lt 5 ]; then
-            echo "⚠️  Warning: Expected at least 5 .node files (found $NODE_COUNT)"
+            echo "Expected at least 5 .node files, found $NODE_COUNT" >&2
+            exit 1
           fi
 
       # Download Python wheel artifacts
@@ -490,13 +503,14 @@ jobs:
           WHEEL_COUNT=$(find python-wheels -name "*.whl" | wc -l | tr -d ' ')
           echo "Found $WHEEL_COUNT wheel file(s)"
           if [ "$WHEEL_COUNT" -lt 5 ]; then
-            echo "⚠️  Warning: Expected at least 5 wheels (found $WHEEL_COUNT)"
+            echo "Expected at least 5 wheels, found $WHEEL_COUNT" >&2
+            exit 1
           fi
 
       # Publish to crates.io (treats "already published" as success)
       - name: Publish to crates.io
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
           VERSION: ${{ needs.version-check.outputs.new_version }}
         run: |
           rc=0

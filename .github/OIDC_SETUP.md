@@ -38,7 +38,7 @@ configuration
 
 **All fields are case-sensitive and must match exactly:**
 
-- **Owner**: `dataroadinc`
+- **Owner**: `legra-ai`
 - **Repository**: `dotenvage` (without the `.git` extension)
 - **Workflow filename**: `ci.yml` (the exact filename in
   `.github/workflows/`)
@@ -56,7 +56,7 @@ Click **"Save"** or **"Add Trusted Publisher"** to complete the setup.
 1. Go to: https://www.npmjs.com/package/@dotenvage/node
 2. Navigate to **Package settings** → **Trusted Publishers**
 3. Verify the configuration matches exactly:
-   - **Owner**: `dataroadinc` (case-sensitive)
+   - **Owner**: `legra-ai` (case-sensitive)
    - **Repository**: `dotenvage` (case-sensitive, no `.git`)
    - **Workflow filename**: `ci.yml` (case-sensitive, exact match)
    - **Environment**: (should be empty or match GitHub environment)
@@ -93,7 +93,7 @@ If publishing still fails after configuration:
 
 1. **Double-check all fields match exactly** (case-sensitive):
 
-   - Owner: `dataroadinc`
+   - Owner: `legra-ai`
    - Repository: `dotenvage`
    - Workflow: `ci.yml`
 

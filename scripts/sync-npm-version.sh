@@ -32,6 +32,32 @@ if [ -f "python/pyproject.toml" ]; then
   echo "✅ Updated python/pyproject.toml to $VERSION"
 fi
 
+# Update the local dotenvage package entry in Python's uv lockfile.
+if [ -f "python/uv.lock" ]; then
+  python3 - "$VERSION" <<'PY'
+import pathlib
+import re
+import sys
+
+lock_path = pathlib.Path("python/uv.lock")
+contents = lock_path.read_text()
+updated, replacements = re.subn(
+    r'(\[\[package\]\]\nname = "dotenvage"\nversion = ")[^"]+("\n)',
+    rf'\g<1>{sys.argv[1]}\2',
+    contents,
+    count=1,
+)
+if replacements != 1:
+    raise SystemExit("could not locate the dotenvage package version in python/uv.lock")
+lock_path.write_text(updated)
+PY
+  python_rc=$?
+  if [ "$python_rc" -ne 0 ]; then
+    exit "$python_rc"
+  fi
+  echo "✅ Updated python/uv.lock to $VERSION"
+fi
+
 # Update root package.json if it exists and has a version field
 if [ -f "package.json" ] && grep -q '"version":' package.json; then
   if [ "$(uname)" == "Darwin" ]; then
