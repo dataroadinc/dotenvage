@@ -90,7 +90,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-dotenvage = "0.3"
+dotenvage = "0.7"
 ```
 
 ## Usage
@@ -600,6 +600,13 @@ Set `DOTENVAGE_AGE_KEY`, `AGE_KEY`, or `EKG_AGE_KEY` in CI secrets:
 env:
   DOTENVAGE_AGE_KEY: ${{ secrets.AGE_KEY }}
 ```
+
+## Development
+
+The repository uses Rhusky to install its tracked `.githooks/` when Cargo
+builds the root package. The explicit `RHUSKY_REPOSITORY_ROOT` setting in
+`.cargo/config.toml` confines installation to this checkout; builds performed
+while dotenvage is a dependency do not alter a consumer's Git hooks.
 
 ## Contributing
 
