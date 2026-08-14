@@ -615,6 +615,32 @@ impl SecretManager {
         Self { identity }
     }
 
+    /// Creates a `SecretManager` from an age X25519 identity string.
+    ///
+    /// This constructor keeps the concrete `age` identity type inside
+    /// dotenvage, so callers that persist or receive an identity as text do
+    /// not need to depend on the same `age` crate version.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `identity` is not a valid age X25519 identity.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use dotenvage::SecretManager;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let generated = SecretManager::generate()?;
+    /// let loaded = SecretManager::from_identity_string(&generated.identity_string())?;
+    /// assert_eq!(loaded.public_key_string(), generated.public_key_string());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_identity_string(identity: &str) -> SecretsResult<Self> {
+        Self::load_from_string(identity)
+    }
+
     /// Gets the public key (recipient) corresponding to this identity.
     ///
     /// The public key can be shared with others who want to encrypt values
@@ -1358,6 +1384,28 @@ mod tests {
     use serial_test::serial;
 
     use super::*;
+
+    #[test]
+    fn identity_string_constructor_roundtrips_generated_identity() {
+        let generated = SecretManager::generate().expect("failed to generate manager");
+        let identity = generated.identity_string();
+
+        let parsed = SecretManager::from_identity_string(&identity)
+            .expect("generated identity should parse");
+
+        assert_eq!(parsed.identity_string(), identity);
+        assert_eq!(parsed.public_key_string(), generated.public_key_string());
+    }
+
+    #[test]
+    fn identity_string_constructor_rejects_invalid_identity() {
+        let error = match SecretManager::from_identity_string("not-an-age-identity") {
+            Ok(_) => panic!("invalid identity should fail"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("parse key"));
+    }
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
