@@ -3,7 +3,7 @@ members = ["npm/dotenvage-napi", "python/dotenvage-pyo3"]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.3"
+version = "0.8.0"
 edition = "2024"
 authors = ["Jacobus Geluk <jacobus.geluk@dataroad.com>"]
 repository = "https://github.com/legra-ai/dotenvage"
@@ -13,7 +13,7 @@ license = "MIT OR Apache-2.0"
 [package]
 name = "dotenvage"
 description = "Dotenv with age encryption: encrypt/decrypt secrets in .env files"
-version = "0.7.3"
+version = "0.8.0"
 edition.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -103,5 +103,6 @@ pre_bump_hooks = [
 additional_files = [
     "npm/package.json",
     "python/pyproject.toml",
+    "python/uv.lock",
     "package.json"
 ]
