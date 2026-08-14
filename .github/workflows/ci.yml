@@ -352,12 +352,6 @@ jobs:
           cog changelog --at v${{ needs.version-check.outputs.new_version }} > CHANGELOG.md
           cat CHANGELOG.md
 
-      - name: Push Release Tag
-        run: |
-          VERSION="${{ needs.version-check.outputs.new_version }}"
-          git push origin "v$VERSION"
-          echo "✅ Pushed tag v$VERSION"
-
       # Download all CLI artifacts
       - name: Download CLI artifacts
         uses: actions/download-artifact@v8
@@ -375,6 +369,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version-check.outputs.new_version }}
+          target_commitish: ${{ github.sha }}
           name: v${{ needs.version-check.outputs.new_version }}
           body_path: CHANGELOG.md
           draft: false
