@@ -4,8 +4,9 @@
 [![npm](https://img.shields.io/npm/v/@dotenvage/node.svg)](https://www.npmjs.com/package/@dotenvage/node)
 [![PyPI](https://img.shields.io/pypi/v/dotenvage.svg)](https://pypi.org/project/dotenvage/)
 [![Documentation](https://docs.rs/dotenvage/badge.svg)](https://docs.rs/dotenvage)
-[![CI](https://github.com/dataroadinc/dotenvage/workflows/CI%2FCD/badge.svg)](https://github.com/dataroadinc/dotenvage/actions)
-[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC_BY--SA_4.0-lightgrey.svg)](https://github.com/dataroadinc/dotenvage/blob/main/LICENSE)
+[![CI](https://github.com/legra-ai/dotenvage/actions/workflows/ci.yml/badge.svg)](https://github.com/legra-ai/dotenvage/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Downloads](https://img.shields.io/crates/d/dotenvage.svg)](https://crates.io/crates/dotenvage)
 
 Dotenv with age encryption: encrypt/decrypt secrets in `.env` files.
 
@@ -56,7 +57,7 @@ cargo install dotenvage
 #### Manual Installation
 
 Download pre-built binaries from
-[GitHub Releases](https://github.com/dataroadinc/dotenvage/releases):
+[GitHub Releases](https://github.com/legra-ai/dotenvage/releases):
 
 - Linux (x86_64): `dotenvage-x86_64-unknown-linux-gnu.zip`
 - Linux (ARM64): `dotenvage-aarch64-unknown-linux-gnu.zip`
@@ -182,7 +183,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Write/update a variable via the library API (auto-encrypts sensitive keys)
     let loader = EnvLoader::new()?;
-    loader.set_var_in_file("WWKG_PASSPHRASE", "super-secret", ".env.local")?;
+    loader.set_var_in_file("LEGRA_PASSPHRASE", "super-secret", ".env.local")?;
 
     // Get all variable names (functional style)
     let vars = EnvLoader::new()?.get_all_variable_names()?.join(", ");
@@ -608,7 +609,7 @@ guidelines.
 
 ## License
 
-Licensed under the Creative Commons Attribution-ShareAlike 4.0
-International License. See
-[LICENSE](https://github.com/dataroadinc/dotenvage/blob/main/LICENSE)
-for details.
+Copyright © 2026 DataRoad Inc, Delaware, USA, trading as Legra.
+
+Licensed under either the [MIT license](LICENSE-MIT) or the
+[Apache License, Version 2.0](LICENSE-APACHE), at your option.

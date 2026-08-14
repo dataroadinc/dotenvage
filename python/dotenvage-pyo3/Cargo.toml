@@ -6,7 +6,7 @@ edition.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-license = "CC-BY-SA-4.0"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [lib]

@@ -1,7 +1,11 @@
 # dotenvage
 
+[![PyPI](https://img.shields.io/pypi/v/dotenvage.svg)](https://pypi.org/project/dotenvage/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/dotenvage.svg)](https://pypi.org/project/dotenvage/)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](../LICENSE-MIT)
+
 Python bindings for
-[dotenvage](https://github.com/dataroadinc/dotenvage) — encrypt
+[dotenvage](https://github.com/legra-ai/dotenvage) — encrypt
 secrets in `.env` files using age encryption (X25519).
 
 ## Installation
@@ -165,4 +169,7 @@ def should_encrypt(key: str) -> bool:
 
 ## License
 
-[CC-BY-SA-4.0](https://github.com/dataroadinc/dotenvage/blob/main/LICENSE)
+Copyright © 2026 DataRoad Inc, Delaware, USA, trading as Legra.
+
+Licensed under either the [MIT license](../LICENSE-MIT) or the
+[Apache License, Version 2.0](../LICENSE-APACHE), at your option.
