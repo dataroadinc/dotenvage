@@ -14,8 +14,15 @@ permissions:
 
 jobs:
   bump:
-    uses: dataroadinc/github-actions/.github/workflows/cargo-auto-version-bump.yml@main
+    uses: legra-ai/github-actions/.github/workflows/cargo-auto-version-bump.yml@main
     with:
       crate-name: dotenvage
       match-mode: first-line-prefix
+      version-files: |
+        Cargo.toml
+        Cargo.lock
+        npm/package.json
+        python/pyproject.toml
+        python/uv.lock
+        package.json
     secrets: inherit

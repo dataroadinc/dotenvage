@@ -1,6 +1,6 @@
 {
   "name": "dotenvage-workspace",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Dotenv with age encryption - Workspace root",
   "private": true,
   "scripts": {
@@ -15,8 +15,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dataroadinc/dotenvage.git"
+    "url": "https://github.com/legra-ai/dotenvage.git"
   },
   "author": "Jacobus Geluk <jacobus@dataroad.com>",
-  "license": "CC-BY-SA-4.0"
+  "license": "MIT OR Apache-2.0"
 }

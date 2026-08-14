@@ -6,7 +6,7 @@ edition.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-license = "CC-BY-SA-4.0"
+license = "MIT OR Apache-2.0"
 publish = false
 
 [lib]
@@ -15,5 +15,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dotenvage = { path = "../../", default-features = false }
-age = { version = "0.11.3", features = ["armor"] }
-pyo3 = { version = "0.28.3", features = ["extension-module", "abi3-py310"] }
+age = { version = "0.12.1", features = ["armor"] }
+pyo3 = { version = "0.29.2", features = ["extension-module", "abi3-py310"] }

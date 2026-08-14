@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "dotenvage"
-version = "0.7.1"
+version = "0.7.2"
 description = "Python bindings for dotenvage - encrypt secrets in .env files using age encryption"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "CC-BY-SA-4.0"
+license = "MIT OR Apache-2.0"
 authors = [
     { name = "Jacobus Geluk", email = "jacobus.geluk@dataroad.com" }
 ]
@@ -29,8 +29,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dataroadinc/dotenvage"
-Repository = "https://github.com/dataroadinc/dotenvage"
+Homepage = "https://github.com/legra-ai/dotenvage"
+Repository = "https://github.com/legra-ai/dotenvage"
 Documentation = "https://docs.rs/dotenvage"
 
 [dependency-groups]

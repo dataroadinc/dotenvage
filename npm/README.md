@@ -1,10 +1,11 @@
 # @dotenvage/node
 
 [![npm version](https://badge.fury.io/js/%40dotenvage%2Fnode.svg)](https://www.npmjs.com/package/@dotenvage/node)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/dataroadinc/dotenvage/blob/main/LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/@dotenvage/node.svg)](https://www.npmjs.com/package/@dotenvage/node)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
 Node.js bindings for
-[dotenvage](https://github.com/dataroadinc/dotenvage) - **Dotenv with
+[dotenvage](https://github.com/legra-ai/dotenvage) - **Dotenv with
 age encryption**.
 
 ## Features
@@ -221,7 +222,7 @@ npx dotenvage dump --export
 ```
 
 See the
-[main dotenvage README](https://github.com/dataroadinc/dotenvage#usage)
+[main dotenvage README](https://github.com/legra-ai/dotenvage#usage)
 for full CLI documentation.
 
 ## Next.js Integration
@@ -338,12 +339,14 @@ npm run npm:build
 
 ## License
 
-MIT - See
-[LICENSE](https://github.com/dataroadinc/dotenvage/blob/main/LICENSE)
+Copyright © 2026 DataRoad Inc, Delaware, USA, trading as Legra.
+
+Licensed under either the [MIT license](LICENSE-MIT) or the
+[Apache License, Version 2.0](LICENSE-APACHE), at your option.
 
 ## Links
 
-- [GitHub Repository](https://github.com/dataroadinc/dotenvage)
+- [GitHub Repository](https://github.com/legra-ai/dotenvage)
 - [Rust Crate](https://crates.io/crates/dotenvage)
 - [Rust Documentation](https://docs.rs/dotenvage)
-- [Main README](https://github.com/dataroadinc/dotenvage#readme)
+- [Main README](https://github.com/legra-ai/dotenvage#readme)

@@ -7,7 +7,7 @@ pre_bump_hooks = [
     "cargo update --workspace",
     # Sync npm package.json version with Rust version
     "./scripts/sync-npm-version.sh {{version}}",
-    "git add Cargo.toml Cargo.lock npm/package.json npm/dotenvage-napi/Cargo.toml package.json",
+    "git add Cargo.toml Cargo.lock npm/package.json python/pyproject.toml python/uv.lock package.json",
 ]
 post_bump_hooks = []
 
@@ -16,7 +16,7 @@ path = "CHANGELOG.md"
 template = "remote"
 remote = "github.com"
 repository = "dotenvage"
-owner = "dataroadinc"
+owner = "legra-ai"
 authors = [{ username = "jgeluk", signature = "Jacobus Geluk" }]
 
 [commit_types]
