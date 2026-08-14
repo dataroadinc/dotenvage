@@ -103,5 +103,6 @@ pre_bump_hooks = [
 additional_files = [
     "npm/package.json",
     "python/pyproject.toml",
+    "python/uv.lock",
     "package.json"
 ]

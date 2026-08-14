@@ -12,6 +12,18 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
+for synchronized_file in \
+  npm/package.json \
+  python/pyproject.toml \
+  python/uv.lock \
+  package.json
+do
+  if ! grep -Fq "\"$synchronized_file\"" Cargo.toml; then
+    echo "Error: $synchronized_file is updated by this hook but missing from version-info additional_files" >&2
+    exit 1
+  fi
+done
+
 # Update npm/package.json
 if [ -f "npm/package.json" ]; then
   if [ "$(uname)" == "Darwin" ]; then
