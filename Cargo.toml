@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 version = "0.8.0"
 edition = "2024"
-authors = ["Jacobus Geluk <jacobus.geluk@dataroad.com>"]
+authors = ["DataRoad Inc, Delaware, USA, trading as Legra"]
 repository = "https://github.com/legra-ai/dotenvage"
 rust-version = "1.94.1"
 license = "MIT OR Apache-2.0"
