@@ -1,0 +1,14 @@
+name: Merge tested dependencies
+on:
+  workflow_run:
+    workflows: [CI/CD]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: legra-ai/github-actions/.github/actions/merge-tested-dependabot@main

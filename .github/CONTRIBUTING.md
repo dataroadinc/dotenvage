@@ -105,7 +105,7 @@ git checkout -b fix/bug-description
 - Update documentation
 - Ensure tests pass: `cargo test`
 - Ensure linting passes: `cargo clippy`
-- Format code: `cargo fmt`
+- Format code: `./scripts/fmt.sh` (the same pinned formatter as CI)
 
 ### 4. Commit Changes
 

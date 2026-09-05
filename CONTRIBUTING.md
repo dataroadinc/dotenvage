@@ -24,7 +24,7 @@ secrets.
 
 ## Prerequisites
 
-- [Rust](https://rustup.rs) (stable and nightly toolchains)
+- [Rust](https://rustup.rs) (the compiler in `rust-toolchain.toml` and formatter in `rustfmt-toolchain`)
 - Git with commit signing configured (GPG or SSH)
 - Basic familiarity with Rust and cryptography concepts
 - Understanding of secure coding practices
@@ -72,10 +72,10 @@ automatically.
 
 The pre-commit hook enforces code quality by running:
 
-1. **Formatting check**: `cargo +nightly fmt --check`
+1. **Formatting check**: `./scripts/fmt.sh --check`
 
-   - Uses nightly for advanced rustfmt features
-   - If this fails, run `cargo +nightly fmt` to fix
+   - Uses the dated nightly in `rustfmt-toolchain` for advanced rustfmt features
+   - If this fails, run `./scripts/fmt.sh` to fix
 
 2. **Clippy lints**:
    `cargo clippy --all-targets --all-features -- -D warnings`
@@ -124,10 +124,10 @@ cargo test --doc
 
 ```bash
 # Check formatting (what the hook runs)
-cargo +nightly fmt --check
+./scripts/fmt.sh --check
 
 # Fix formatting
-cargo +nightly fmt
+./scripts/fmt.sh
 
 # Run clippy (what the hook runs)
 cargo clippy --all-targets --all-features -- -D warnings
@@ -139,7 +139,7 @@ cargo clippy --fix --all-targets --all-features
 ## Code Style
 
 - Follow Rust standard style guidelines
-- Use `cargo +nightly fmt` for formatting
+- Use `./scripts/fmt.sh` for formatting; update the formatter pin explicitly, never through a floating nightly CI install
 - All public items must have documentation
 - Include `# Errors`, `# Panics`, and `# Safety` sections where
   applicable
@@ -304,7 +304,7 @@ commit):
 - [ ] Code follows project style guidelines
 - [ ] All tests pass (`cargo test`)
 - [ ] Clippy is clean (`cargo clippy -- -D warnings`)
-- [ ] Code is formatted (`cargo +nightly fmt`)
+- [ ] Code is formatted (`./scripts/fmt.sh`)
 - [ ] Documentation is updated
 - [ ] Commit messages follow conventional commits
 - [ ] **All commits are signed** (GPG or SSH)
