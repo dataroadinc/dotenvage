@@ -43,6 +43,10 @@ jobs:
         run: ./scripts/fmt.sh --check
       - name: Check release workflow contract
         run: python3 -m unittest discover -s tests -p test_release_workflow.py
+      - name: Install commit validator
+        uses: legra-ai/github-actions/.github/actions/setup-cocogitto@main
+      - name: Check commit policy
+        run: python3 scripts/test-commit-policy.py
 
   # Run clippy linting
   clippy:
