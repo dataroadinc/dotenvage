@@ -30,11 +30,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.version-check.outputs.revision }}
-      - uses: dtolnay/rust-toolchain@nightly
+      - name: Read formatter pin
+        id: formatter
+        run: |
+          IFS= read -r formatter_toolchain < rustfmt-toolchain || exit 1
+          printf 'toolchain=%s\n' "$formatter_toolchain" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: ${{ steps.formatter.outputs.toolchain }}
           components: rustfmt
       - name: Check formatting
-        run: cargo +nightly fmt --all -- --check
+        run: ./scripts/fmt.sh --check
       - name: Check release workflow contract
         run: python3 -m unittest discover -s tests -p test_release_workflow.py
 

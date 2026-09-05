@@ -33,6 +33,15 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_workflow_contract_tests_run_in_ci(self) -> None:
         self.assertIn("python3 -m unittest discover -s tests -p test_release_workflow.py", WORKFLOW)
 
+    def test_ci_and_hooks_use_the_same_pinned_formatter(self) -> None:
+        root = Path(__file__).parents[1]
+        self.assertRegex((root / "rustfmt-toolchain").read_text().strip(),
+                         r"^nightly-\d{4}-\d{2}-\d{2}$")
+        self.assertIn("./scripts/fmt.sh --check", WORKFLOW)
+        self.assertIn("./scripts/fmt.sh --check", (root / ".githooks/pre-commit").read_text())
+        self.assertIn("toolchain: ${{ steps.formatter.outputs.toolchain }}", WORKFLOW)
+        self.assertNotIn("cargo +nightly", WORKFLOW)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,11 +1,4 @@
 #!/bin/sh
-# Check for nightly toolchain
-if ! rustup run nightly rustc --version > /dev/null 2>&1; then
-    echo "Error: Rust nightly toolchain is required but not installed."
-    echo "Install with: rustup install nightly"
-    exit 1
-fi
-
 # Check for Rust files in commit
 RUST_FILES=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null) || {
     echo "Error: Failed to get staged files."
@@ -16,14 +9,14 @@ if [ -z "$RUST_FILES" ]; then
     exit 0
 fi
 
-echo "Running cargo +nightly fmt --check..."
-if ! cargo +nightly fmt -- --check; then
-    echo "Format check failed. Run: cargo +nightly fmt"
+echo "Running the pinned formatter..."
+if ! ./scripts/fmt.sh --check; then
+    echo "Format check failed. Run: ./scripts/fmt.sh"
     exit 1
 fi
 
-echo "Running cargo +nightly clippy..."
-if ! cargo +nightly clippy --all-targets -- -D warnings; then
+echo "Running clippy with the repository toolchain..."
+if ! cargo clippy --all-targets -- -D warnings; then
     echo "Clippy check failed."
     exit 1
 fi
