@@ -1,5 +1,5 @@
 # Dependabot configuration for automated dependency updates
-# Updates are grouped and scheduled weekly (Sunday 10 PM UTC)
+# Updates are checked daily and merged only after the complete CI workflow.
 # See: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
@@ -7,10 +7,7 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "22:00"
-      timezone: "Etc/UTC"
+      interval: "daily"
     # Group all dependency updates into a single PR
     groups:
       all-dependencies:
@@ -41,14 +38,11 @@ updates:
       prefix-development: "build"
       include: "scope"
 
-  # Also check for GitHub Actions updates weekly
+  # Workflow changes receive the same validation gate.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "sunday"
-      time: "22:00"
-      timezone: "Etc/UTC"
+      interval: "daily"
     groups:
       github-actions:
         patterns:
@@ -58,3 +52,36 @@ updates:
       - "automated"
     commit-message:
       prefix: "ci"
+      include: "scope"
+
+  - package-ecosystem: "npm"
+    directory: "/npm"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
+    groups:
+      compatible:
+        update-types: ["minor", "patch"]
+      security:
+        applies-to: "security-updates"
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  - package-ecosystem: "uv"
+    directory: "/python"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-type: "all"
+    groups:
+      compatible:
+        update-types: ["minor", "patch"]
+      security:
+        applies-to: "security-updates"
+        patterns: ["*"]
+    commit-message:
+      prefix: "build"
+      include: "scope"
