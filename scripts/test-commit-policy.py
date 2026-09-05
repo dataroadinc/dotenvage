@@ -7,6 +7,16 @@ import unittest
 
 
 class CommitPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.repository = tempfile.TemporaryDirectory()
+        self.addCleanup(self.repository.cleanup)
+        for arguments in [
+            ["init", "--quiet"],
+            ["config", "user.name", "Commit policy test"],
+            ["config", "user.email", "commit-policy@example.invalid"],
+        ]:
+            subprocess.run(["git", "-C", self.repository.name, *arguments], check=True)
+
     def test_commit_header_contract(self):
         hook = Path(__file__).resolve().parents[1] / ".githooks/commit-msg"
         cases = [
@@ -23,7 +33,8 @@ class CommitPolicyTests(unittest.TestCase):
             with self.subTest(message=message), tempfile.NamedTemporaryFile(mode="w") as source:
                 source.write(message + "\n")
                 source.flush()
-                result = subprocess.run([str(hook), source.name], capture_output=True, text=True)
+                result = subprocess.run([str(hook), source.name], cwd=self.repository.name,
+                                        capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, valid, result.stdout + result.stderr)
 
 
