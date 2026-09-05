@@ -35,6 +35,8 @@ jobs:
           components: rustfmt
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check
+      - name: Check release workflow contract
+        run: python3 -m unittest discover -s tests -p test_release_workflow.py
 
   # Run clippy linting
   clippy:
